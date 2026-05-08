@@ -9,9 +9,8 @@ Current verified boundary:
 - `ggml`, `ggml-base`, `ggml-cpu`, `llama`, and `mtmd` are visible CMake targets.
 - `tools/mtmd/clip.cpp`, `tools/mtmd/clip-graph.h`, and
   `tools/mtmd/models/siglip.cpp` are present in the submodule.
-- `src/models/mtmd_bridge.cpp` includes and links the public `mtmd` API through
-  `vlacpp`; `vlacpp-mtmd-bridge` verifies the default media marker and context
-  params at runtime.
+- `vlacpp` links the public `mtmd` target directly; `vlacpp-mtmd-api` verifies
+  the default media marker and context params at runtime.
 - `src/models/pi0.cpp` directly builds narrow F32 `ggml_mul_mat + ggml_add`
   graphs for single and batched linear layers; the pi0/pi0.5 restricted
   action-head forward path now runs the action horizon through ggml instead of

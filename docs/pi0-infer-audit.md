@@ -14,7 +14,7 @@ sampling, and OpenPI comparison.
 | Model forward | `src/models/pi0.cpp` implements mock/tiny velocity forward, restricted pi0 state/action-head forward, and restricted pi0.5 action/time-head forward. The restricted action-head linear layers now execute the action horizon through direct batched `ggml` graph calls. Full SigLIP/PaliGemma/Gemma backbone is not implemented. | Partial |
 | Flow sampling | `src/sampling/flow.cpp` Euler flow sampler is wired into mock, tiny velocity, and action-head paths. | Done for implemented paths |
 | OpenPI comparison | `tools/compare-openpi-reference.py` compares tiny OpenPI-style math; `tools/compare-openpi-policy.py` can call official OpenPI policy API when installed and requires `full-openpi` capability by default; `tests/run_fake_openpi_policy_compare.py` validates both the restricted-model rejection and explicit subset-test override. Real official checkpoint parity has not been executed. | Partial |
-| llama.cpp/ggml reuse | `third_party/llama.cpp` is now a required submodule gitlink; default CMake configures and links `ggml`, `llama`, and `mtmd` for `vlacpp`; `vlacpp-mtmd-bridge` verifies a real `mtmd` API call through the runtime target; the restricted action-head forward path uses direct `ggml` graph calls; GGUF conversion uses llama.cpp `gguf-py`. Full OpenPI graph wiring still remains. | Partial |
+| llama.cpp/ggml reuse | `third_party/llama.cpp` is now a required submodule gitlink; default CMake configures and links `ggml`, `llama`, and `mtmd` for `vlacpp`; `vlacpp-mtmd-api` verifies direct `mtmd` API availability; the restricted action-head forward path uses direct `ggml` graph calls; GGUF conversion uses llama.cpp `gguf-py`. Full OpenPI graph wiring still remains. | Partial |
 
 ## Default Test Coverage
 
@@ -29,8 +29,8 @@ ctest --test-dir build --output-on-failure
 Expected CTest coverage:
 
 - `vlacpp-runtime`: public C API lifecycle and mock inference.
-- `vlacpp-mtmd-bridge`: internal runtime bridge includes and calls public
-  `mtmd` APIs linked through the required llama.cpp submodule.
+- `vlacpp-mtmd-api`: direct public `mtmd` API defaults linked through the
+  required llama.cpp submodule.
 - `vlacpp-tiny-gguf-convert`: tiny JSON checkpoint to GGUF.
 - `vlacpp-tiny-openpi-compare`: tiny GGUF runtime vs Python reference.
 - `vlacpp-tiny-capability-info`: CLI capability reporting for tiny velocity models.
