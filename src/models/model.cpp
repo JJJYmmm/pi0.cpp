@@ -105,9 +105,35 @@ bool has_pi05_action_head_tensors(const ModelConfig & config, const TensorMap & 
         out_b.shape.size() == 1 && out_b.shape[0] == config.action_dim;
 }
 
+bool has_valid_vision_projector_tensors(const ModelConfig & config, const TensorMap & tensors) {
+    auto weight = tensors.find("vlacpp.openpi.vision_projector.weight");
+    auto bias = tensors.find("vlacpp.openpi.vision_projector.bias");
+    if (weight == tensors.end() && bias == tensors.end()) {
+        return true;
+    }
+    if (weight == tensors.end() || bias == tensors.end()) {
+        return false;
+    }
+    const int64_t ne0 = config.openpi_vision_width > 0 ? config.openpi_vision_width : weight->second.shape[0];
+    const int64_t ne1 = config.openpi_language_width > 0 ? config.openpi_language_width : weight->second.shape[1];
+    return weight->second.shape.size() == 2 &&
+        weight->second.shape[0] == ne0 &&
+        weight->second.shape[1] == ne1 &&
+        weight->second.data.size() == static_cast<size_t>(ne0 * ne1) &&
+        bias->second.shape.size() == 1 &&
+        bias->second.shape[0] == ne1 &&
+        bias->second.data.size() == static_cast<size_t>(ne1);
+}
+
 vlacpp_status validate_pi0_tensors(const ModelConfig & config, const TensorMap & tensors) {
     if (config.model_type == "mock-pi0") {
         return VLACPP_STATUS_OK;
+    }
+
+    if (!has_valid_vision_projector_tensors(config, tensors)) {
+        return fail(
+            VLACPP_STATUS_PARSE_ERROR,
+            "pi0 vision projector tensors must use ggml ne order [vision_width, language_width]");
     }
 
     if (has_tiny_velocity_tensors(config, tensors) ||
