@@ -1,0 +1,124 @@
+#!/usr/bin/env python3
+"""Create a vlacpp tensor-mapping manifest from an OpenPI safetensors header."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any
+
+
+ACTION_EXPERT_MAP = {
+    "state_proj.weight": "vlacpp.openpi.state_proj.weight",
+    "state_proj.bias": "vlacpp.openpi.state_proj.bias",
+    "action_in_proj.weight": "vlacpp.openpi.action_in_proj.weight",
+    "action_in_proj.bias": "vlacpp.openpi.action_in_proj.bias",
+    "action_out_proj.weight": "vlacpp.openpi.action_out_proj.weight",
+    "action_out_proj.bias": "vlacpp.openpi.action_out_proj.bias",
+    "action_time_mlp_in.weight": "vlacpp.openpi.action_time_mlp_in.weight",
+    "action_time_mlp_in.bias": "vlacpp.openpi.action_time_mlp_in.bias",
+    "action_time_mlp_out.weight": "vlacpp.openpi.action_time_mlp_out.weight",
+    "action_time_mlp_out.bias": "vlacpp.openpi.action_time_mlp_out.bias",
+}
+
+TINY_VELOCITY_MAP = {
+    "pi0.velocity.weight": "pi0.velocity.weight",
+    "pi0.velocity.time_weight": "pi0.velocity.time_weight",
+}
+
+PI05_ACTION_EXPERT_MAP = {
+    "action_in_proj.weight": "vlacpp.openpi.action_in_proj.weight",
+    "action_in_proj.bias": "vlacpp.openpi.action_in_proj.bias",
+    "time_mlp_in.weight": "vlacpp.openpi.pi05.time_mlp_in.weight",
+    "time_mlp_in.bias": "vlacpp.openpi.pi05.time_mlp_in.bias",
+    "time_mlp_out.weight": "vlacpp.openpi.pi05.time_mlp_out.weight",
+    "time_mlp_out.bias": "vlacpp.openpi.pi05.time_mlp_out.bias",
+    "action_out_proj.weight": "vlacpp.openpi.action_out_proj.weight",
+    "action_out_proj.bias": "vlacpp.openpi.action_out_proj.bias",
+}
+
+
+def inspect_header(source: str) -> dict[str, Any]:
+    script = Path(__file__).with_name("inspect-safetensors.py")
+    raw = subprocess.check_output(
+        [sys.executable, str(script), source, "--json", "--include-metadata", "--limit", "100000"],
+        text=True,
+    )
+    return json.loads(raw)
+
+
+def manifest_metadata(header: dict[str, Any]) -> dict[str, Any]:
+    raw = header.get("metadata", {}).get("vlacpp.metadata")
+    if not raw:
+        return {}
+    decoded = json.loads(raw)
+    if not isinstance(decoded, dict):
+        raise SystemExit("vlacpp.metadata must decode to a JSON object")
+    return decoded
+
+
+def build_manifest(source: str, header: dict[str, Any], mapping: dict[str, str]) -> dict[str, Any]:
+    rows = header["tensors"]
+    by_name = {row["name"]: row for row in rows}
+    mapped = []
+    missing = []
+    for source_name, target_name in mapping.items():
+        row = by_name.get(source_name)
+        if row is None:
+            missing.append(source_name)
+            continue
+        mapped.append(
+            {
+                "source": source_name,
+                "target": target_name,
+                "dtype": row["dtype"],
+                "shape": row["shape"],
+                "data_offsets": row["data_offsets"],
+            }
+        )
+
+    return {
+        "source": source,
+        "format": "vlacpp-openpi-tensor-map-v0",
+        "metadata": manifest_metadata(header),
+        "mapped_count": len(mapped),
+        "missing": missing,
+        "tensors": mapped,
+    }
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("source", help="local path, https URL, or hf://owner/repo/path/to/model.safetensors")
+    parser.add_argument(
+        "--family",
+        choices=["action-expert", "pi05-action-expert", "tiny-velocity"],
+        default="action-expert",
+    )
+    parser.add_argument("--output", type=Path)
+    parser.add_argument("--require-complete", action="store_true")
+    args = parser.parse_args()
+
+    if args.family == "action-expert":
+        mapping = ACTION_EXPERT_MAP
+    elif args.family == "pi05-action-expert":
+        mapping = PI05_ACTION_EXPERT_MAP
+    else:
+        mapping = TINY_VELOCITY_MAP
+    manifest = build_manifest(args.source, inspect_header(args.source), mapping)
+    if args.require_complete and manifest["missing"]:
+        raise SystemExit("missing mapped tensor(s): " + ", ".join(manifest["missing"]))
+
+    text = json.dumps(manifest, indent=2) + "\n"
+    if args.output:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(text, encoding="utf-8")
+    else:
+        print(text, end="")
+
+
+if __name__ == "__main__":
+    main()

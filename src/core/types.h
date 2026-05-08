@@ -1,0 +1,82 @@
+#pragma once
+
+#include "vlacpp.h"
+
+#include <cstdint>
+#include <map>
+#include <memory>
+#include <string>
+#include <vector>
+
+namespace vlacpp {
+
+struct ModelConfig {
+    std::string model_type = "mock-pi0";
+    int image_width = 224;
+    int image_height = 224;
+    int state_dim = 0;
+    int action_dim = 0;
+    int action_horizon = 0;
+    int max_token_len = 250;
+    std::vector<std::string> image_keys;
+    std::vector<float> state_mean;
+    std::vector<float> state_std;
+    std::vector<float> action_mean;
+    std::vector<float> action_std;
+};
+
+struct Tensor {
+    std::vector<int64_t> shape;
+    std::vector<float> data;
+};
+
+using TensorMap = std::map<std::string, Tensor>;
+
+struct ImageTensor {
+    std::string name;
+    int width = 0;
+    int height = 0;
+    int channels = 0;
+    std::vector<float> data;
+};
+
+struct ObservationData {
+    std::vector<ImageTensor> images;
+    std::vector<float> state;
+    std::string prompt;
+};
+
+struct KvCache {
+    bool prefix_valid = false;
+    size_t token_count = 0;
+
+    void reset() {
+        prefix_valid = false;
+        token_count = 0;
+    }
+};
+
+struct BackendConfig {
+    vlacpp_backend backend = VLACPP_BACKEND_CPU;
+    int n_threads = 0;
+};
+
+struct RuntimeConfig {
+    uint32_t seed = 0;
+    int flow_steps = 10;
+};
+
+class Model {
+public:
+    virtual ~Model() = default;
+    virtual const ModelConfig & config() const = 0;
+    virtual const char * capability() const = 0;
+    virtual vlacpp_status reset_cache(KvCache & cache) = 0;
+    virtual vlacpp_status infer(
+        KvCache & cache,
+        const RuntimeConfig & runtime,
+        const ObservationData & observation,
+        std::vector<float> & out_actions) = 0;
+};
+
+} // namespace vlacpp
