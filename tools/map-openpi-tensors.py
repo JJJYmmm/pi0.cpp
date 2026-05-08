@@ -41,6 +41,18 @@ PI05_ACTION_EXPERT_MAP = {
     "action_out_proj.bias": "vlacpp.openpi.action_out_proj.bias",
 }
 
+VISION_PROJECTOR_MAP = {
+    "paligemma_with_expert.paligemma.model.multi_modal_projector.linear.weight":
+        "vlacpp.openpi.vision_projector.weight",
+    "paligemma_with_expert.paligemma.model.multi_modal_projector.linear.bias":
+        "vlacpp.openpi.vision_projector.bias",
+}
+
+PI0_RUNTIME_ALIAS_MAP = {
+    **ACTION_EXPERT_MAP,
+    **VISION_PROJECTOR_MAP,
+}
+
 VISION_PREFIX = "paligemma_with_expert.paligemma.model.vision_tower.vision_model."
 
 VISION_SUFFIX_MAP = {
@@ -287,7 +299,7 @@ def main() -> None:
     elif args.family == "all":
         mapping = all_tensor_map(header)
     elif args.family == "pi0-full":
-        mapping = full_tensor_map(header, ACTION_EXPERT_MAP)
+        mapping = full_tensor_map(header, PI0_RUNTIME_ALIAS_MAP)
     elif args.family == "pi05-full":
         mapping = full_tensor_map(header, PI05_ACTION_EXPERT_MAP)
     elif args.family == "pi0-vision-mtmd":
