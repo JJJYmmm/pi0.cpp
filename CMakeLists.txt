@@ -15,6 +15,8 @@ add_library(vlacpp
     src/core/json.cpp
     src/core/preprocess.cpp
     src/models/model.cpp
+    src/models/pi0_action_decoder.cpp
+    src/models/pi0_vlm.cpp
     src/models/pi0.cpp
     src/sampling/flow.cpp
 )
