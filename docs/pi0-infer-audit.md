@@ -50,6 +50,8 @@ Expected CTest coverage:
   top-level `family`, `expected_count`, `mapped_count`, and `coverage`.
 - `vlacpp-action-head-safetensors-inventory-check`: verifies local inventory
   mapped/unmapped counts and groups.
+- `vlacpp-action-head-safetensors-summary`: `summarize-tensor-map.py` asserts
+  pi0 action-head manifest family and mapped/total/unmapped coverage.
 - `vlacpp-action-head-mapped-safetensors-convert`: mapped safetensors payloads to
   GGUF using `--tensor-map-manifest`; this test intentionally relies on
   manifest metadata instead of passing model dimensions by command line.
@@ -75,6 +77,8 @@ Expected CTest coverage:
   with mapped coverage emitted by `map-openpi-tensors.py --include-inventory`.
 - `vlacpp-pi05-action-head-safetensors-inventory-check`: verifies local pi0.5
   inventory mapped/unmapped counts and groups.
+- `vlacpp-pi05-action-head-safetensors-summary`: `summarize-tensor-map.py`
+  asserts pi0.5 action-head manifest family and mapped/total/unmapped coverage.
 - `vlacpp-pi05-action-head-mapped-safetensors-convert`: mapped OpenPI-named
   pi0.5 safetensors payloads to GGUF.
 - `vlacpp-pi05-action-head-mapped-safetensors-reference-compare`: mapped pi0.5

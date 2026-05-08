@@ -236,6 +236,8 @@ Inventory subgroup summaries normalize repeated layer indices so the remaining
 backbone work is visible at block granularity, for example pi0 splits into
 `paligemma_with_expert.paligemma.model` and
 `paligemma_with_expert.gemma_expert.model.layers.*`.
+Use `tools/summarize-tensor-map.py` to inspect an inventory manifest or assert
+expected coverage in automation.
 
 See `docs/pi0-infer-audit.md` for the current prompt-to-artifact completion
 audit and the remaining gaps before full OpenPI parity.

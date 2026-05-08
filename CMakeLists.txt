@@ -229,6 +229,18 @@ if(VLACPP_BUILD_TESTS)
                 --manifest "${VLACPP_ACTION_HEAD_INVENTORY_MANIFEST}"
         )
         add_test(
+            NAME vlacpp-action-head-safetensors-summary
+            COMMAND
+                ${Python3_EXECUTABLE}
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/summarize-tensor-map.py"
+                "${VLACPP_ACTION_HEAD_INVENTORY_MANIFEST}"
+                --expect-family action-expert
+                --expect-expected 10
+                --expect-mapped 10
+                --expect-total 10
+                --expect-unmapped 0
+        )
+        add_test(
             NAME vlacpp-action-head-mapped-safetensors-convert
             COMMAND
                 ${Python3_EXECUTABLE}
@@ -295,6 +307,7 @@ if(VLACPP_BUILD_TESTS)
         set_tests_properties(vlacpp-action-head-safetensors-map PROPERTIES DEPENDS vlacpp-action-head-safetensors-create)
         set_tests_properties(vlacpp-action-head-safetensors-inventory PROPERTIES DEPENDS vlacpp-action-head-safetensors-create)
         set_tests_properties(vlacpp-action-head-safetensors-inventory-check PROPERTIES DEPENDS vlacpp-action-head-safetensors-inventory)
+        set_tests_properties(vlacpp-action-head-safetensors-summary PROPERTIES DEPENDS vlacpp-action-head-safetensors-inventory)
         set_tests_properties(vlacpp-action-head-mapped-safetensors-convert PROPERTIES DEPENDS vlacpp-action-head-safetensors-map)
         set_tests_properties(vlacpp-action-head-mapped-safetensors-reference-compare PROPERTIES DEPENDS vlacpp-action-head-mapped-safetensors-convert)
         set_tests_properties(vlacpp-action-head-local-smoke PROPERTIES DEPENDS vlacpp-action-head-safetensors-create)
@@ -386,6 +399,18 @@ if(VLACPP_BUILD_TESTS)
                 --group time_mlp_out
         )
         add_test(
+            NAME vlacpp-pi05-action-head-safetensors-summary
+            COMMAND
+                ${Python3_EXECUTABLE}
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/summarize-tensor-map.py"
+                "${VLACPP_PI05_ACTION_HEAD_INVENTORY_MANIFEST}"
+                --expect-family pi05-action-expert
+                --expect-expected 8
+                --expect-mapped 8
+                --expect-total 8
+                --expect-unmapped 0
+        )
+        add_test(
             NAME vlacpp-pi05-action-head-mapped-safetensors-convert
             COMMAND
                 ${Python3_EXECUTABLE}
@@ -409,6 +434,7 @@ if(VLACPP_BUILD_TESTS)
         set_tests_properties(vlacpp-pi05-action-head-safetensors-map PROPERTIES DEPENDS vlacpp-pi05-action-head-safetensors-create)
         set_tests_properties(vlacpp-pi05-action-head-safetensors-inventory PROPERTIES DEPENDS vlacpp-pi05-action-head-safetensors-create)
         set_tests_properties(vlacpp-pi05-action-head-safetensors-inventory-check PROPERTIES DEPENDS vlacpp-pi05-action-head-safetensors-inventory)
+        set_tests_properties(vlacpp-pi05-action-head-safetensors-summary PROPERTIES DEPENDS vlacpp-pi05-action-head-safetensors-inventory)
         set_tests_properties(vlacpp-pi05-action-head-mapped-safetensors-convert PROPERTIES DEPENDS vlacpp-pi05-action-head-safetensors-map)
         set_tests_properties(vlacpp-pi05-action-head-mapped-safetensors-reference-compare PROPERTIES DEPENDS vlacpp-pi05-action-head-mapped-safetensors-convert)
 
