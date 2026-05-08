@@ -13,13 +13,22 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 
-def hf_url(spec: str) -> str:
-    repo_and_file = spec[len("hf://") :]
+def resolve_repo_file_url(spec: str) -> str:
+    if spec.startswith("hf://"):
+        base = "https://huggingface.co"
+        ref = "main"
+        repo_and_file = spec[len("hf://") :]
+    elif spec.startswith("ms://"):
+        base = "https://modelscope.cn/models"
+        ref = "master"
+        repo_and_file = spec[len("ms://") :]
+    else:
+        raise SystemExit("remote repo paths must start with hf:// or ms://")
     parts = repo_and_file.split("/", 2)
     if len(parts) != 3:
-        raise SystemExit("hf:// paths must look like hf://owner/repo/path/to/model.safetensors")
+        raise SystemExit("remote repo paths must look like hf://owner/repo/path or ms://owner/repo/path")
     owner, repo, filename = parts
-    return f"https://huggingface.co/{owner}/{repo}/resolve/main/{quote(filename)}"
+    return f"{base}/{owner}/{repo}/resolve/{ref}/{quote(filename)}"
 
 
 def read_local_header(path: Path) -> dict[str, Any]:
@@ -52,8 +61,8 @@ def read_remote_header(url: str) -> dict[str, Any]:
 
 
 def read_header(path_or_url: str) -> dict[str, Any]:
-    if path_or_url.startswith("hf://"):
-        return read_remote_header(hf_url(path_or_url))
+    if path_or_url.startswith("hf://") or path_or_url.startswith("ms://"):
+        return read_remote_header(resolve_repo_file_url(path_or_url))
     if path_or_url.startswith("https://") or path_or_url.startswith("http://"):
         return read_remote_header(path_or_url)
     return read_local_header(Path(path_or_url))
@@ -77,7 +86,7 @@ def tensor_rows(header: dict[str, Any]) -> list[dict[str, Any]]:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("path", help="local path, https URL, or hf://owner/repo/path/to/model.safetensors")
+    parser.add_argument("path", help="local path, https URL, hf://owner/repo/path, or ms://owner/repo/path")
     parser.add_argument("--contains", action="append", default=[], help="only show tensor names containing this text")
     parser.add_argument("--limit", type=int, default=50)
     parser.add_argument("--json", action="store_true", help="emit JSON")

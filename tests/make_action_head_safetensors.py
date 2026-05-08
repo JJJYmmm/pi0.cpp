@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import sys
+import argparse
 from pathlib import Path
 
 try:
@@ -29,16 +30,19 @@ TARGET_TO_SOURCE = {
 
 
 def main() -> None:
-    if len(sys.argv) != 3:
-        raise SystemExit("usage: make_action_head_safetensors.py checkpoint.json output.safetensors")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("checkpoint")
+    parser.add_argument("output")
+    parser.add_argument("--prefix", default="")
+    args = parser.parse_args()
 
-    checkpoint = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+    checkpoint = json.loads(Path(args.checkpoint).read_text(encoding="utf-8"))
     tensors = {}
     for target, source in TARGET_TO_SOURCE.items():
         tensor = checkpoint["tensors"][target]
-        tensors[source] = np.asarray(tensor["data"], dtype=np.float32).reshape(tensor["shape"])
+        tensors[args.prefix + source] = np.asarray(tensor["data"], dtype=np.float32).reshape(tensor["shape"])
 
-    output = Path(sys.argv[2])
+    output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     save_file(tensors, str(output), metadata={"vlacpp.metadata": json.dumps(checkpoint["metadata"])})
 

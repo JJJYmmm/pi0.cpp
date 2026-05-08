@@ -9,7 +9,7 @@ sampling, and OpenPI comparison.
 | Requirement | Current Evidence | Status |
 | --- | --- | --- |
 | Git branch initialized | `git branch --show-current` reports `pi0-infer`; baseline commit is `cd35c54` (`pi0: add restricted gguf inference path`). | Done |
-| HF checkpoint discovery/download path | `tools/inspect-safetensors.py` and `tools/run-action-head-smoke.py` consume `hf://maxqualia/openpi-pi0-corkinbox100-1882950e/model.safetensors` with range reads; pi0.5 action-head smoke was verified against `hf://Tacoin/openpi-pi0.5-libero-onnx/checkpoints/pi05_libero_pytorch/model.safetensors`; `convert-openpi-to-gguf.py --norm-stats` consumes HF pi0.5 Libero config/norm stats. | Partial |
+| HF/ModelScope checkpoint discovery/download path | `tools/inspect-safetensors.py` and `tools/run-action-head-smoke.py` consume `hf://maxqualia/openpi-pi0-corkinbox100-1882950e/model.safetensors` with range reads; `ms://lerobot/pi0/model.safetensors` is supported for ModelScope mirrors and real pi0 action-head range-read conversion; pi0.5 action-head smoke was verified against `hf://Tacoin/openpi-pi0.5-libero-onnx/checkpoints/pi05_libero_pytorch/model.safetensors`; `convert-openpi-to-gguf.py --norm-stats` consumes HF pi0.5 Libero config/norm stats. | Partial |
 | GGUF conversion | `tools/convert-openpi-to-gguf.py` writes GGUF through `tools/gguf_writer.py` for tiny velocity tensors, tiny safetensors, local/remote mapped OpenPI action-head tensors, BF16 remote tensors, and F16 local tensors. Tensor-map manifests preserve `vlacpp.metadata` from safetensors headers when present, so mapped local fixtures infer dimensions without command-line overrides. Metadata-less mapped OpenPI action-head shards infer `action_dim` from action projection tensors and `state_dim` from `state_proj.weight` when available. `tools/inspect-gguf.py` verifies emitted tensor names/shapes. Real pi0 HF inventory currently maps 10/777 tensors for the action-head subset, while `--family all` can generate a 777/777 identity manifest from the same header. `--family pi0-full` and `--family pi05-full` preserve every tensor while aliasing currently supported head tensors to runtime names. Real pi0.5 HF action-head inventory maps 8/812 tensors. Runtime support remains partial. | Partial |
 | Model forward | `src/models/pi0.cpp` implements mock/tiny velocity forward, restricted pi0 state/action-head forward, and restricted pi0.5 action/time-head forward. Full SigLIP/PaliGemma/Gemma backbone is not implemented. | Partial |
 | Flow sampling | `src/sampling/flow.cpp` Euler flow sampler is wired into mock, tiny velocity, and action-head paths. | Done for implemented paths |
@@ -45,6 +45,11 @@ Expected CTest coverage:
   safetensors fixture.
 - `vlacpp-action-head-safetensors-map`: local OpenPI-named safetensors header to
   vlacpp tensor-map manifest, including embedded `vlacpp.metadata`.
+- `vlacpp-action-head-prefixed-safetensors-map`: local OpenPI-named safetensors
+  with the ModelScope-style `model.` prefix maps to the same vlacpp runtime
+  names.
+- `vlacpp-action-head-prefixed-safetensors-reference-compare`: ModelScope-style
+  prefixed safetensors GGUF runtime vs independent math reference.
 - `vlacpp-action-head-safetensors-inventory`: local tensor inventory with mapped
   coverage emitted by `map-openpi-tensors.py --include-inventory`, including
   top-level `family`, `expected_count`, `mapped_count`, and `coverage`.
@@ -161,6 +166,10 @@ Latest verified smoke outputs:
   verified 777/777 mapped tensors, including 767/767
   `paligemma_with_expert` backbone tensors preserved by name and the supported
   head/state tensors aliased to runtime names.
+  `ms://lerobot/pi0/model.safetensors` uses a ModelScope-style `model.` prefix;
+  the action-head mapper now aliases those prefixed tensor names, and a
+  range-read restricted GGUF smoke produced `horizon=32`, `action_dim=32`, and
+  capability `restricted-pi0-state-action-head`.
 - pi0.5:
   `hf://Tacoin/openpi-pi0.5-libero-onnx/checkpoints/pi05_libero_pytorch/model.safetensors`,
   `tensor_count=8`, `action_count=320`, first actions

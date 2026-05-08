@@ -59,7 +59,10 @@ if(VLACPP_BUILD_TESTS)
         set(VLACPP_ACTION_HEAD_CHECKPOINT "${CMAKE_CURRENT_SOURCE_DIR}/tests/action-head-checkpoint.json")
         set(VLACPP_ACTION_HEAD_GGUF "${CMAKE_CURRENT_BINARY_DIR}/action-head.gguf")
         set(VLACPP_ACTION_HEAD_SAFETENSORS "${CMAKE_CURRENT_BINARY_DIR}/action-head-openpi-names.safetensors")
+        set(VLACPP_ACTION_HEAD_PREFIXED_SAFETENSORS "${CMAKE_CURRENT_BINARY_DIR}/action-head-model-prefix-openpi-names.safetensors")
         set(VLACPP_ACTION_HEAD_MANIFEST "${CMAKE_CURRENT_BINARY_DIR}/action-head-openpi-map.json")
+        set(VLACPP_ACTION_HEAD_PREFIXED_MANIFEST "${CMAKE_CURRENT_BINARY_DIR}/action-head-model-prefix-openpi-map.json")
+        set(VLACPP_ACTION_HEAD_PREFIXED_GGUF "${CMAKE_CURRENT_BINARY_DIR}/action-head-model-prefix-openpi.gguf")
         set(VLACPP_ACTION_HEAD_INVENTORY_MANIFEST "${CMAKE_CURRENT_BINARY_DIR}/action-head-openpi-inventory-map.json")
         set(VLACPP_ACTION_HEAD_ALL_MANIFEST "${CMAKE_CURRENT_BINARY_DIR}/action-head-openpi-all-map.json")
         set(VLACPP_ACTION_HEAD_ALL_GGUF "${CMAKE_CURRENT_BINARY_DIR}/action-head-openpi-all.gguf")
@@ -207,6 +210,16 @@ if(VLACPP_BUILD_TESTS)
         )
         set_tests_properties(vlacpp-action-head-safetensors-create PROPERTIES SKIP_RETURN_CODE 77)
         add_test(
+            NAME vlacpp-action-head-prefixed-safetensors-create
+            COMMAND
+                ${Python3_EXECUTABLE}
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/make_action_head_safetensors.py"
+                "${VLACPP_ACTION_HEAD_CHECKPOINT}"
+                "${VLACPP_ACTION_HEAD_PREFIXED_SAFETENSORS}"
+                --prefix "model."
+        )
+        set_tests_properties(vlacpp-action-head-prefixed-safetensors-create PROPERTIES SKIP_RETURN_CODE 77)
+        add_test(
             NAME vlacpp-action-head-safetensors-map
             COMMAND
                 ${Python3_EXECUTABLE}
@@ -215,6 +228,37 @@ if(VLACPP_BUILD_TESTS)
                 --family action-expert
                 --require-complete
                 --output "${VLACPP_ACTION_HEAD_MANIFEST}"
+        )
+        add_test(
+            NAME vlacpp-action-head-prefixed-safetensors-map
+            COMMAND
+                ${Python3_EXECUTABLE}
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/map-openpi-tensors.py"
+                "${VLACPP_ACTION_HEAD_PREFIXED_SAFETENSORS}"
+                --family action-expert
+                --require-complete
+                --output "${VLACPP_ACTION_HEAD_PREFIXED_MANIFEST}"
+        )
+        add_test(
+            NAME vlacpp-action-head-prefixed-safetensors-convert
+            COMMAND
+                ${Python3_EXECUTABLE}
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/convert-openpi-to-gguf.py"
+                --tensor-map-manifest "${VLACPP_ACTION_HEAD_PREFIXED_MANIFEST}"
+                --output "${VLACPP_ACTION_HEAD_PREFIXED_GGUF}"
+        )
+        add_test(
+            NAME vlacpp-action-head-prefixed-safetensors-reference-compare
+            COMMAND
+                ${Python3_EXECUTABLE}
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/compare_action_head_reference.py"
+                --checkpoint "${VLACPP_ACTION_HEAD_CHECKPOINT}"
+                --model "${VLACPP_ACTION_HEAD_PREFIXED_GGUF}"
+                --binary "$<TARGET_FILE:vlacpp-pi0>"
+                --state "1,-2"
+                --prompt "pick up the fork"
+                --steps 2
+                --seed 1
         )
         add_test(
             NAME vlacpp-action-head-safetensors-inventory
@@ -386,6 +430,9 @@ if(VLACPP_BUILD_TESTS)
                 --seed 1
         )
         set_tests_properties(vlacpp-action-head-safetensors-map PROPERTIES DEPENDS vlacpp-action-head-safetensors-create)
+        set_tests_properties(vlacpp-action-head-prefixed-safetensors-map PROPERTIES DEPENDS vlacpp-action-head-prefixed-safetensors-create)
+        set_tests_properties(vlacpp-action-head-prefixed-safetensors-convert PROPERTIES DEPENDS vlacpp-action-head-prefixed-safetensors-map)
+        set_tests_properties(vlacpp-action-head-prefixed-safetensors-reference-compare PROPERTIES DEPENDS vlacpp-action-head-prefixed-safetensors-convert)
         set_tests_properties(vlacpp-action-head-safetensors-inventory PROPERTIES DEPENDS vlacpp-action-head-safetensors-create)
         set_tests_properties(vlacpp-action-head-safetensors-inventory-check PROPERTIES DEPENDS vlacpp-action-head-safetensors-inventory)
         set_tests_properties(vlacpp-action-head-safetensors-summary PROPERTIES DEPENDS vlacpp-action-head-safetensors-inventory)

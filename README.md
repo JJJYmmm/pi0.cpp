@@ -125,9 +125,19 @@ python3 tools/inspect-safetensors.py \
   --limit 20
 ```
 
-The converter also range-reads remote `hf://...safetensors` headers and required
-tensor payloads instead of downloading multi-GB files up front. The same
-manifest flow also works for local safetensors files, which keeps the
+ModelScope pi0 mirrors can be addressed with `ms://`:
+
+```sh
+python3 tools/inspect-safetensors.py \
+  ms://lerobot/pi0/model.safetensors \
+  --contains action \
+  --limit 20
+```
+
+The converter also range-reads remote `hf://...safetensors`,
+`ms://...safetensors`, and HTTPS headers and required tensor payloads instead of
+downloading multi-GB files up front. The same manifest flow also works for local
+safetensors files, which keeps the
 OpenPI-name-to-vlacpp-name mapping path covered in default tests without
 network access. If a safetensors header contains `vlacpp.metadata`,
 `map-openpi-tensors.py` preserves it in the manifest so
@@ -136,6 +146,14 @@ without repeating them on the command line. For OpenPI safetensors without that
 metadata, the converter infers `action_dim` from action projection tensors and
 `state_dim` from `state_proj.weight` when present; `action_horizon` still has to
 come from config or a command-line argument.
+
+When a full local payload is needed, keep it out of git under `ckpts/`:
+
+```sh
+python3 tools/download-remote-file.py \
+  ms://lerobot/pi0/model.safetensors \
+  --output ckpts/lerobot-pi0/model.safetensors
+```
 
 Generate a mapping manifest for the real OpenPI state projection and action
 head tensors:

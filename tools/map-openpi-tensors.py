@@ -45,9 +45,23 @@ def all_tensor_map(header: dict[str, Any]) -> dict[str, str]:
     return {row["name"]: row["name"] for row in header["tensors"]}
 
 
+def resolve_runtime_aliases(header: dict[str, Any], runtime_aliases: dict[str, str]) -> dict[str, str]:
+    names = {row["name"] for row in header["tensors"]}
+    resolved = {}
+    for source, target in runtime_aliases.items():
+        prefixed = f"model.{source}"
+        if source in names:
+            resolved[source] = target
+        elif prefixed in names:
+            resolved[prefixed] = target
+        else:
+            resolved[source] = target
+    return resolved
+
+
 def full_tensor_map(header: dict[str, Any], runtime_aliases: dict[str, str]) -> dict[str, str]:
     mapping = all_tensor_map(header)
-    for source, target in runtime_aliases.items():
+    for source, target in resolve_runtime_aliases(header, runtime_aliases).items():
         if source in mapping:
             mapping[source] = target
     return mapping
@@ -171,7 +185,7 @@ def build_manifest(
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("source", help="local path, https URL, or hf://owner/repo/path/to/model.safetensors")
+    parser.add_argument("source", help="local path, https URL, hf://owner/repo/path, or ms://owner/repo/path")
     parser.add_argument(
         "--family",
         choices=["action-expert", "pi05-action-expert", "tiny-velocity", "all", "pi0-full", "pi05-full"],
@@ -184,9 +198,9 @@ def main() -> None:
 
     header = inspect_header(args.source)
     if args.family == "action-expert":
-        mapping = ACTION_EXPERT_MAP
+        mapping = resolve_runtime_aliases(header, ACTION_EXPERT_MAP)
     elif args.family == "pi05-action-expert":
-        mapping = PI05_ACTION_EXPERT_MAP
+        mapping = resolve_runtime_aliases(header, PI05_ACTION_EXPERT_MAP)
     elif args.family == "all":
         mapping = all_tensor_map(header)
     elif args.family == "pi0-full":

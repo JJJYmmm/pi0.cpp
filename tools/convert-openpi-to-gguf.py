@@ -80,19 +80,40 @@ def resolve_checkpoint(checkpoint: str | None) -> Path | None:
     return Path(checkpoint)
 
 
-def hf_resolve_url(spec: str) -> str:
-    repo_and_file = spec[len("hf://") :]
+def resolve_repo_file_url(spec: str) -> str:
+    if spec.startswith("hf://"):
+        base = "https://huggingface.co"
+        ref = "main"
+        repo_and_file = spec[len("hf://") :]
+    elif spec.startswith("ms://"):
+        base = "https://modelscope.cn/models"
+        ref = "master"
+        repo_and_file = spec[len("ms://") :]
+    else:
+        raise SystemExit("remote repo paths must start with hf:// or ms://")
     parts = repo_and_file.split("/", 2)
     if len(parts) != 3:
-        raise SystemExit("hf:// checkpoints must look like hf://owner/repo/path/to/checkpoint")
+        raise SystemExit("remote repo paths must look like hf://owner/repo/path or ms://owner/repo/path")
     owner, repo, filename = parts
-    return f"https://huggingface.co/{owner}/{repo}/resolve/main/{quote(filename)}"
+    return f"{base}/{owner}/{repo}/resolve/{ref}/{quote(filename)}"
 
 
 def load_json(path: Path | None) -> dict[str, Any]:
     if path is None:
         return {}
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def load_json_arg(spec: str | None) -> dict[str, Any]:
+    if spec is None:
+        return {}
+    if spec.startswith("hf://") or spec.startswith("ms://"):
+        with urlopen(resolve_repo_file_url(spec), timeout=60) as response:
+            return json.loads(response.read().decode("utf-8"))
+    if spec.startswith("https://") or spec.startswith("http://"):
+        with urlopen(spec, timeout=60) as response:
+            return json.loads(response.read().decode("utf-8"))
+    return load_json(Path(spec))
 
 
 def apply_norm_stats(metadata: dict[str, Any], norm_stats: dict[str, Any]) -> None:
@@ -177,7 +198,7 @@ def tensor_payload_to_float32(dtype: str, raw: bytes) -> list[float]:
 
 
 def load_remote_safetensors(spec: str) -> dict[str, Any]:
-    url = hf_resolve_url(spec) if spec.startswith("hf://") else spec
+    url = resolve_repo_file_url(spec) if spec.startswith("hf://") or spec.startswith("ms://") else spec
     header_len = struct.unpack("<Q", read_remote_range(url, 0, 7))[0]
     header = json.loads(read_remote_range(url, 8, 8 + header_len - 1).decode("utf-8"))
     raw_metadata = header.get("__metadata__", {})
@@ -217,8 +238,13 @@ def resolve_manifest_source(manifest_path: Path, source: str) -> Path:
 def load_tensor_map_manifest(manifest_path: Path) -> dict[str, Any]:
     manifest = load_json(manifest_path)
     source = manifest["source"]
-    if source.startswith("hf://") or source.startswith("https://") or source.startswith("http://"):
-        url = hf_resolve_url(source) if source.startswith("hf://") else source
+    if (
+        source.startswith("hf://") or
+        source.startswith("ms://") or
+        source.startswith("https://") or
+        source.startswith("http://")
+    ):
+        url = resolve_repo_file_url(source) if source.startswith("hf://") or source.startswith("ms://") else source
         read_range = lambda begin, end: read_remote_range(url, begin, end)
     else:
         source_path = resolve_manifest_source(manifest_path, source)
@@ -250,7 +276,12 @@ def load_checkpoint(path: Path | None) -> dict[str, Any]:
 def load_checkpoint_arg(checkpoint: str | None) -> dict[str, Any]:
     if checkpoint is None:
         return {}
-    if (checkpoint.startswith("hf://") or checkpoint.startswith("https://") or checkpoint.startswith("http://")) and (
+    if (
+        checkpoint.startswith("hf://") or
+        checkpoint.startswith("ms://") or
+        checkpoint.startswith("https://") or
+        checkpoint.startswith("http://")
+    ) and (
         checkpoint.endswith(".safetensors")
     ):
         return load_remote_safetensors(checkpoint)
@@ -405,8 +436,8 @@ def gguf_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint")
-    parser.add_argument("--config", help="optional JSON metadata/config file, local path or hf:// URI")
-    parser.add_argument("--norm-stats", help="optional OpenPI norm_stats JSON file, local path or hf:// URI")
+    parser.add_argument("--config", help="optional JSON metadata/config file, local path, hf:// URI, or ms:// URI")
+    parser.add_argument("--norm-stats", help="optional OpenPI norm_stats JSON file, local path, hf:// URI, or ms:// URI")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--output-format", choices=["auto", "json", "gguf"], default="auto")
     parser.add_argument("--init-tiny", action="store_true", help="create tiny reference tensors when checkpoint has metadata only")
@@ -421,14 +452,14 @@ def main() -> None:
     parser.add_argument("--image-key", action="append", default=["base_0_rgb"])
     args = parser.parse_args()
 
-    config_path = resolve_checkpoint(args.config)
     checkpoint = load_tensor_map_manifest(args.tensor_map_manifest) if args.tensor_map_manifest is not None else load_checkpoint_arg(args.checkpoint)
-    if config_path is not None:
-        checkpoint = {**checkpoint, "metadata": {**load_json(config_path), **checkpoint.get("metadata", {})}}
+    config = load_json_arg(args.config)
+    if config:
+        checkpoint = {**checkpoint, "metadata": {**config, **checkpoint.get("metadata", {})}}
     metadata = build_metadata(args, checkpoint)
-    norm_stats_path = resolve_checkpoint(args.norm_stats)
-    if norm_stats_path is not None:
-        apply_norm_stats(metadata, load_json(norm_stats_path))
+    norm_stats = load_json_arg(args.norm_stats)
+    if norm_stats:
+        apply_norm_stats(metadata, norm_stats)
     output_format = args.output_format
     if output_format == "auto":
         output_format = "json" if args.output.suffix.lower() == ".json" else "gguf"
