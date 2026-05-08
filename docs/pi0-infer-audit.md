@@ -67,6 +67,18 @@ Expected CTest coverage:
 - `vlacpp-pi05-action-head-gguf-convert`: small pi0.5 action-head JSON checkpoint to GGUF.
 - `vlacpp-pi05-action-head-cli`: pi0.5 action-head GGUF runtime shape/finite smoke.
 - `vlacpp-pi05-action-head-reference-compare`: pi0.5 action-head runtime vs independent math reference.
+- `vlacpp-pi05-action-head-safetensors-create`: generated OpenPI-named pi0.5
+  action-head safetensors fixture.
+- `vlacpp-pi05-action-head-safetensors-map`: local OpenPI-named pi0.5
+  safetensors header to vlacpp tensor-map manifest.
+- `vlacpp-pi05-action-head-safetensors-inventory`: local pi0.5 tensor inventory
+  with mapped coverage emitted by `map-openpi-tensors.py --include-inventory`.
+- `vlacpp-pi05-action-head-safetensors-inventory-check`: verifies local pi0.5
+  inventory mapped/unmapped counts and groups.
+- `vlacpp-pi05-action-head-mapped-safetensors-convert`: mapped OpenPI-named
+  pi0.5 safetensors payloads to GGUF.
+- `vlacpp-pi05-action-head-mapped-safetensors-reference-compare`: mapped pi0.5
+  GGUF runtime vs independent math reference.
 - `vlacpp-pi05-f16-safetensors-create`: generated F16 pi0.5 safetensors fixture.
 - `vlacpp-pi05-f16-safetensors-convert`: F16 pi0.5 safetensors to F32 GGUF.
 - `vlacpp-pi05-f16-safetensors-cli`: F16-converted pi0.5 GGUF runtime shape/finite smoke.

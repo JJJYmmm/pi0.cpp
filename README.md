@@ -223,7 +223,9 @@ metadata and norm_stats with `inspect-gguf.py`, compares the norm-stats
 action-head runtime path against the Python reference, runs a local
 `run-action-head-smoke.py` map/convert/inspect/CLI chain from OpenPI-named
 safetensors, validates tensor inventory reporting, and verifies that
-`--require-full` rejects restricted runtime subsets.
+`--require-full` rejects restricted runtime subsets. The pi0.5 path is covered
+both from vlacpp-named fixtures and from OpenPI-named safetensors through the
+`pi05-action-expert` tensor map.
 
 `map-openpi-tensors.py --include-inventory` adds top-level `family`,
 `expected_count`, `mapped_count`, and `coverage` fields, plus group-level
