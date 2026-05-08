@@ -22,6 +22,7 @@ public:
         std::vector<float> & q,
         std::vector<float> & k,
         std::vector<float> & v) const;
+    void attention_out_batch(int layer, const std::vector<float> & values, int batch, std::vector<float> & out) const;
     void mlp_batch(int layer, const std::vector<float> & tokens, int batch, std::vector<float> & out) const;
 
 private:

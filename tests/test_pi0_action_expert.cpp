@@ -99,6 +99,8 @@ int main() {
         tensor({2, 4}, {0.1f, -0.2f, 0.3f, 0.4f, -0.5f, 0.6f, 0.7f, -0.8f});
     tensors[layer_prefix + "self_attn.k_proj.weight"] = tensor({2, 2}, {0.2f, 0.1f, -0.3f, 0.5f});
     tensors[layer_prefix + "self_attn.v_proj.weight"] = tensor({2, 2}, {-0.4f, 0.6f, 0.8f, -0.2f});
+    tensors[layer_prefix + "self_attn.o_proj.weight"] =
+        tensor({4, 2}, {0.2f, -0.1f, 0.3f, 0.4f, -0.2f, 0.5f, 0.6f, -0.7f});
     tensors[mlp_prefix + "gate_proj.weight"] = tensor({2, 3}, {0.2f, -0.1f, -0.3f, 0.4f, 0.1f, 0.5f});
     tensors[mlp_prefix + "up_proj.weight"] = tensor({2, 3}, {0.6f, 0.2f, -0.2f, 0.3f, 0.4f, -0.5f});
     tensors[mlp_prefix + "down_proj.weight"] = tensor({3, 2}, {0.3f, -0.2f, 0.1f, -0.4f, 0.2f, 0.5f});
@@ -126,6 +128,13 @@ int main() {
     require_close(q, linear(tensors[layer_prefix + "self_attn.q_proj.weight"].data, input, 2, 2, 4));
     require_close(k, linear(tensors[layer_prefix + "self_attn.k_proj.weight"].data, input, 2, 2, 2));
     require_close(v, linear(tensors[layer_prefix + "self_attn.v_proj.weight"].data, input, 2, 2, 2));
+
+    std::vector<float> attention_out;
+    const std::vector<float> attention_values = {0.25f, -0.5f, 0.75f, 1.0f, -1.0f, 0.5f, 0.0f, 0.2f};
+    expert.attention_out_batch(0, attention_values, 2, attention_out);
+    require_close(
+        attention_out,
+        linear(tensors[layer_prefix + "self_attn.o_proj.weight"].data, attention_values, 2, 4, 2));
 
     std::vector<float> gate = linear(tensors[mlp_prefix + "gate_proj.weight"].data, input, 2, 2, 3);
     std::vector<float> up = linear(tensors[mlp_prefix + "up_proj.weight"].data, input, 2, 2, 3);

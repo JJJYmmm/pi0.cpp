@@ -193,6 +193,60 @@ void Pi0ActionExpert::qkv_batch(
     ggml_free(ctx);
 }
 
+void Pi0ActionExpert::attention_out_batch(
+    int layer,
+    const std::vector<float> & values,
+    int batch,
+    std::vector<float> & out) const {
+    if (batch <= 0 ||
+        config_.openpi_action_expert_width <= 0 ||
+        config_.openpi_action_expert_q_out <= 0) {
+        throw std::invalid_argument("invalid pi0 action expert attention output dimensions");
+    }
+    const Tensor * out_w = find_tensor(layer_prefix(layer) + "self_attn.o_proj.weight");
+    if (out_w == nullptr) {
+        throw std::invalid_argument("missing pi0 action expert attention output tensor");
+    }
+    const int64_t width = config_.openpi_action_expert_width;
+    const int64_t q_out = config_.openpi_action_expert_q_out;
+    require_weight_shape(*out_w, q_out, width, "action expert o_proj");
+    if (values.size() != static_cast<size_t>(batch) * static_cast<size_t>(q_out)) {
+        throw std::invalid_argument("action expert attention output input has incompatible shape");
+    }
+
+    const size_t tensor_bytes =
+        (out_w->data.size() + values.size()) * sizeof(float) +
+        static_cast<size_t>(batch) * static_cast<size_t>(width) * sizeof(float);
+    const size_t context_size = std::max<size_t>(64 * 1024 * 1024, tensor_bytes * 4 + 1024 * 1024);
+    ggml_init_params params{};
+    params.mem_size = context_size;
+    params.mem_buffer = nullptr;
+    params.no_alloc = false;
+    ggml_context * ctx = ggml_init(params);
+    if (ctx == nullptr) {
+        throw std::runtime_error("failed to initialize ggml context");
+    }
+
+    ggml_tensor * w = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, q_out, width);
+    ggml_tensor * x = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, q_out, batch);
+    copy_tensor_data(w, *out_w);
+    std::memcpy(ggml_get_data_f32(x), values.data(), values.size() * sizeof(float));
+
+    ggml_tensor * y = ggml_mul_mat(ctx, w, x);
+    ggml_cgraph * graph = ggml_new_graph(ctx);
+    ggml_build_forward_expand(graph, y);
+    const ggml_status status = ggml_graph_compute_with_ctx(ctx, graph, std::max(1, backend_.n_threads));
+    if (status != GGML_STATUS_SUCCESS) {
+        ggml_free(ctx);
+        throw std::runtime_error("ggml action expert attention output graph compute failed");
+    }
+
+    out.assign(
+        ggml_get_data_f32(y),
+        ggml_get_data_f32(y) + static_cast<size_t>(batch) * static_cast<size_t>(width));
+    ggml_free(ctx);
+}
+
 void Pi0ActionExpert::mlp_batch(
     int layer,
     const std::vector<float> & tokens,
