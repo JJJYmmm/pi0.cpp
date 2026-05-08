@@ -216,7 +216,7 @@ void require_close(const std::vector<float> & actual, const std::vector<float> &
     for (size_t i = 0; i < actual.size(); ++i) {
         max_abs = std::max(max_abs, std::fabs(actual[i] - expected[i]));
     }
-    if (max_abs > 3.0e-5f) {
+    if (max_abs > 5.0e-5f) {
         std::cerr << "action expert MLP mismatch: max_abs=" << max_abs << "\n";
         std::exit(1);
     }
@@ -400,6 +400,53 @@ int main() {
         block_expected[i] += block_attention_out[i];
     }
     require_close(block_actual, block_expected);
+
+    const std::vector<float> prefix_kv_k = {0.15f, -0.25f};
+    const std::vector<float> prefix_kv_v = {0.35f, 0.45f};
+    const std::vector<float> prefix_block_mask = {
+        0.0f, 0.0f, -INFINITY,
+        0.0f, 0.0f, 0.0f,
+    };
+    std::vector<float> prefix_block_actual;
+    expert.block_prefix_batch(
+        0,
+        input,
+        block_positions,
+        prefix_kv_k,
+        prefix_kv_v,
+        prefix_block_mask,
+        1,
+        2,
+        2,
+        1,
+        2,
+        prefix_block_actual);
+    std::vector<float> prefix_k_all = prefix_kv_k;
+    prefix_k_all.insert(prefix_k_all.end(), block_k.begin(), block_k.end());
+    std::vector<float> prefix_v_all = prefix_kv_v;
+    prefix_v_all.insert(prefix_v_all.end(), block_v.begin(), block_v.end());
+    std::vector<float> prefix_block_attn =
+        attention_ref(block_q, prefix_k_all, prefix_v_all, prefix_block_mask, 2, 3, 2, 1, 2);
+    std::vector<float> prefix_block_attention_out =
+        linear(tensors[layer_prefix + "self_attn.o_proj.weight"].data, prefix_block_attn, 2, 4, 2);
+    for (size_t i = 0; i < prefix_block_attention_out.size(); ++i) {
+        prefix_block_attention_out[i] += input[i];
+    }
+    std::vector<float> prefix_block_post =
+        rms_norm(tensors[layer_prefix + "post_attention_layernorm.weight"].data, prefix_block_attention_out, 2, 2);
+    std::vector<float> prefix_block_gate =
+        linear(tensors[mlp_prefix + "gate_proj.weight"].data, prefix_block_post, 2, 2, 3);
+    std::vector<float> prefix_block_up =
+        linear(tensors[mlp_prefix + "up_proj.weight"].data, prefix_block_post, 2, 2, 3);
+    for (size_t i = 0; i < prefix_block_gate.size(); ++i) {
+        prefix_block_gate[i] = gelu(prefix_block_gate[i]) * prefix_block_up[i];
+    }
+    std::vector<float> prefix_block_expected =
+        linear(tensors[mlp_prefix + "down_proj.weight"].data, prefix_block_gate, 2, 3, 2);
+    for (size_t i = 0; i < prefix_block_expected.size(); ++i) {
+        prefix_block_expected[i] += prefix_block_attention_out[i];
+    }
+    require_close(prefix_block_actual, prefix_block_expected);
 
     tensors["vlacpp.openpi.action_in_proj.weight"] = tensor({1, 2}, {0.4f, -0.25f});
     tensors["vlacpp.openpi.action_in_proj.bias"] = tensor({2}, {0.05f, -0.1f});

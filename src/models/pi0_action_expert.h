@@ -81,6 +81,19 @@ public:
         int kv_heads,
         int head_dim,
         std::vector<float> & out) const;
+    void block_prefix_batch(
+        int layer,
+        const std::vector<float> & tokens,
+        const std::vector<int> & positions,
+        const std::vector<float> & prefix_k,
+        const std::vector<float> & prefix_v,
+        const std::vector<float> & attention_mask,
+        int prefix_tokens,
+        int batch,
+        int heads,
+        int kv_heads,
+        int head_dim,
+        std::vector<float> & out) const;
 
 private:
     void norm_batch(

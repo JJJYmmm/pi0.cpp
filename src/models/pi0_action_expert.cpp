@@ -563,6 +563,93 @@ void Pi0ActionExpert::block_masked_batch(
     }
 }
 
+void Pi0ActionExpert::block_prefix_batch(
+    int layer,
+    const std::vector<float> & tokens,
+    const std::vector<int> & positions,
+    const std::vector<float> & prefix_k,
+    const std::vector<float> & prefix_v,
+    const std::vector<float> & attention_mask,
+    int prefix_tokens,
+    int batch,
+    int heads,
+    int kv_heads,
+    int head_dim,
+    std::vector<float> & out) const {
+    if (prefix_tokens < 0) {
+        throw std::invalid_argument("action expert prefix token count is out of range");
+    }
+    const size_t prefix_size =
+        static_cast<size_t>(prefix_tokens) * static_cast<size_t>(kv_heads) * static_cast<size_t>(head_dim);
+    if (prefix_k.size() != prefix_size || prefix_v.size() != prefix_size) {
+        throw std::invalid_argument("action expert prefix KV tensors have incompatible shape");
+    }
+    const size_t kv_token_count = static_cast<size_t>(prefix_tokens) + static_cast<size_t>(batch);
+    if (!attention_mask.empty() &&
+        attention_mask.size() != static_cast<size_t>(batch) * kv_token_count) {
+        throw std::invalid_argument("action expert prefix attention mask has incompatible shape");
+    }
+
+    const size_t width = static_cast<size_t>(config_.openpi_action_expert_width);
+    if (batch <= 0 || width == 0 || tokens.size() != static_cast<size_t>(batch) * width) {
+        throw std::invalid_argument("action expert block input has incompatible shape");
+    }
+
+    std::vector<float> normed;
+    input_norm_batch(layer, tokens, batch, normed);
+
+    std::vector<float> q;
+    std::vector<float> k;
+    std::vector<float> v;
+    qkv_batch(layer, normed, batch, q, k, v);
+
+    std::vector<float> q_rot;
+    std::vector<float> k_rot;
+    rope_batch(q, positions, batch, heads, head_dim, q_rot);
+    rope_batch(k, positions, batch, kv_heads, head_dim, k_rot);
+
+    std::vector<float> k_all;
+    std::vector<float> v_all;
+    k_all.reserve(prefix_k.size() + k_rot.size());
+    v_all.reserve(prefix_v.size() + v.size());
+    k_all.insert(k_all.end(), prefix_k.begin(), prefix_k.end());
+    k_all.insert(k_all.end(), k_rot.begin(), k_rot.end());
+    v_all.insert(v_all.end(), prefix_v.begin(), prefix_v.end());
+    v_all.insert(v_all.end(), v.begin(), v.end());
+
+    std::vector<float> attn_values;
+    attention_masked_batch(
+        q_rot,
+        k_all,
+        v_all,
+        attention_mask,
+        batch,
+        static_cast<int>(kv_token_count),
+        heads,
+        kv_heads,
+        head_dim,
+        attn_values);
+
+    std::vector<float> attn_out;
+    attention_out_batch(layer, attn_values, batch, attn_out);
+
+    std::vector<float> first_residual(tokens.size(), 0.0f);
+    for (size_t i = 0; i < first_residual.size(); ++i) {
+        first_residual[i] = tokens[i] + attn_out[i];
+    }
+
+    std::vector<float> post_norm;
+    post_attention_norm_batch(layer, first_residual, batch, post_norm);
+
+    std::vector<float> mlp_out;
+    mlp_batch(layer, post_norm, batch, mlp_out);
+
+    out.resize(first_residual.size());
+    for (size_t i = 0; i < out.size(); ++i) {
+        out[i] = first_residual[i] + mlp_out[i];
+    }
+}
+
 const Tensor * Pi0ActionExpert::find_tensor(const std::string & name) const {
     auto it = tensors_.find(name);
     if (it != tensors_.end()) {
