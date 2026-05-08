@@ -225,6 +225,10 @@ action-head runtime path against the Python reference, runs a local
 safetensors, validates tensor inventory reporting, and verifies that
 `--require-full` rejects restricted runtime subsets.
 
+`map-openpi-tensors.py --include-inventory` adds top-level `family`,
+`expected_count`, `mapped_count`, and `coverage` fields, plus group-level
+mapped/unmapped counts for planning the remaining full-model tensor map.
+
 See `docs/pi0-infer-audit.md` for the current prompt-to-artifact completion
 audit and the remaining gaps before full OpenPI parity.
 

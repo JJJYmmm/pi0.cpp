@@ -100,6 +100,7 @@ def build_manifest(
     source: str,
     header: dict[str, Any],
     mapping: dict[str, str],
+    family: str,
     include_inventory: bool = False,
 ) -> dict[str, Any]:
     rows = header["tensors"]
@@ -124,8 +125,11 @@ def build_manifest(
     manifest = {
         "source": source,
         "format": "vlacpp-openpi-tensor-map-v0",
+        "family": family,
         "metadata": manifest_metadata(header),
+        "expected_count": len(mapping),
         "mapped_count": len(mapped),
+        "coverage": len(mapped) / max(1, len(mapping)),
         "missing": missing,
         "tensors": mapped,
     }
@@ -153,7 +157,7 @@ def main() -> None:
         mapping = PI05_ACTION_EXPERT_MAP
     else:
         mapping = TINY_VELOCITY_MAP
-    manifest = build_manifest(args.source, inspect_header(args.source), mapping, args.include_inventory)
+    manifest = build_manifest(args.source, inspect_header(args.source), mapping, args.family, args.include_inventory)
     if args.require_complete and manifest["missing"]:
         raise SystemExit("missing mapped tensor(s): " + ", ".join(manifest["missing"]))
 

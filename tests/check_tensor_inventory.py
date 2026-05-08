@@ -14,6 +14,12 @@ def main() -> None:
     args = parser.parse_args()
 
     manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
+    if manifest.get("family") != "action-expert":
+        raise SystemExit(f"unexpected family: {manifest.get('family')}")
+    if manifest.get("expected_count") != 10 or manifest.get("mapped_count") != 10:
+        raise SystemExit(f"unexpected top-level coverage: {manifest.get('mapped_count')}/{manifest.get('expected_count')}")
+    if abs(float(manifest.get("coverage")) - 1.0) > 1e-9:
+        raise SystemExit(f"unexpected coverage: {manifest.get('coverage')}")
     inventory = manifest["inventory"]
     if inventory["total_tensor_count"] != 10:
         raise SystemExit(f"unexpected total_tensor_count: {inventory['total_tensor_count']}")

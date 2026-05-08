@@ -46,7 +46,8 @@ Expected CTest coverage:
 - `vlacpp-action-head-safetensors-map`: local OpenPI-named safetensors header to
   vlacpp tensor-map manifest, including embedded `vlacpp.metadata`.
 - `vlacpp-action-head-safetensors-inventory`: local tensor inventory with mapped
-  coverage emitted by `map-openpi-tensors.py --include-inventory`.
+  coverage emitted by `map-openpi-tensors.py --include-inventory`, including
+  top-level `family`, `expected_count`, `mapped_count`, and `coverage`.
 - `vlacpp-action-head-safetensors-inventory-check`: verifies local inventory
   mapped/unmapped counts and groups.
 - `vlacpp-action-head-mapped-safetensors-convert`: mapped safetensors payloads to
