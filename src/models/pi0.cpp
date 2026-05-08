@@ -1,6 +1,7 @@
 #include "models/model.h"
 
 #include "core/error.h"
+#include "models/ggml_bridge.h"
 #include "sampling/flow.h"
 
 #include <algorithm>
@@ -22,24 +23,6 @@ float mean_or_zero(const std::vector<float> & values) {
 
 float swish(float x) {
     return x / (1.0f + std::exp(-x));
-}
-
-void linear(
-    const Tensor & weight,
-    const Tensor & bias,
-    const std::vector<float> & input,
-    std::vector<float> & output) {
-    const size_t out_dim = static_cast<size_t>(weight.shape[0]);
-    const size_t in_dim = static_cast<size_t>(weight.shape[1]);
-    output.assign(out_dim, 0.0f);
-    for (size_t row = 0; row < out_dim; ++row) {
-        float value = bias.data[row];
-        const size_t offset = row * in_dim;
-        for (size_t col = 0; col < in_dim; ++col) {
-            value += weight.data[offset + col] * input[col];
-        }
-        output[row] = value;
-    }
 }
 
 std::vector<float> posemb_sincos(float time, size_t width) {
@@ -221,7 +204,7 @@ private:
     void action_head_state_context(const std::vector<float> & state, std::vector<float> & out) const {
         const Tensor & state_w = *find_tensor("vlacpp.openpi.state_proj.weight");
         const Tensor & state_b = *find_tensor("vlacpp.openpi.state_proj.bias");
-        linear(state_w, state_b, state, out);
+        ggml_linear(state_w, state_b, state, out, backend_.n_threads);
     }
 
     void action_head_velocity(
@@ -239,7 +222,7 @@ private:
         const Tensor & out_b = *find_tensor("vlacpp.openpi.action_out_proj.bias");
 
         std::vector<float> action_token;
-        linear(in_w, in_b, action, action_token);
+        ggml_linear(in_w, in_b, action, action_token, backend_.n_threads);
         if (!state_context.empty()) {
             for (size_t i = 0; i < action_token.size(); ++i) {
                 action_token[i] += state_context[i];
@@ -252,16 +235,16 @@ private:
         action_time.insert(action_time.end(), time_emb.begin(), time_emb.end());
 
         std::vector<float> hidden;
-        linear(time_in_w, time_in_b, action_time, hidden);
+        ggml_linear(time_in_w, time_in_b, action_time, hidden, backend_.n_threads);
         for (float & value : hidden) {
             value = swish(value);
         }
         std::vector<float> mixed;
-        linear(time_out_w, time_out_b, hidden, mixed);
+        ggml_linear(time_out_w, time_out_b, hidden, mixed, backend_.n_threads);
         for (float & value : mixed) {
             value = swish(value);
         }
-        linear(out_w, out_b, mixed, out);
+        ggml_linear(out_w, out_b, mixed, out, backend_.n_threads);
     }
 
     void pi05_action_head_velocity(float time, const std::vector<float> & action, std::vector<float> & out) const {
@@ -275,22 +258,22 @@ private:
         const Tensor & out_b = *find_tensor("vlacpp.openpi.action_out_proj.bias");
 
         std::vector<float> action_token;
-        linear(in_w, in_b, action, action_token);
+        ggml_linear(in_w, in_b, action, action_token, backend_.n_threads);
         std::vector<float> time_emb = posemb_sincos(time, action_token.size());
         std::vector<float> hidden;
-        linear(time_in_w, time_in_b, time_emb, hidden);
+        ggml_linear(time_in_w, time_in_b, time_emb, hidden, backend_.n_threads);
         for (float & value : hidden) {
             value = swish(value);
         }
         std::vector<float> time_context;
-        linear(time_out_w, time_out_b, hidden, time_context);
+        ggml_linear(time_out_w, time_out_b, hidden, time_context, backend_.n_threads);
         for (float & value : time_context) {
             value = swish(value);
         }
         for (size_t i = 0; i < action_token.size(); ++i) {
             action_token[i] += time_context[i];
         }
-        linear(out_w, out_b, action_token, out);
+        ggml_linear(out_w, out_b, action_token, out, backend_.n_threads);
     }
 
     ModelConfig config_;

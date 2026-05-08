@@ -14,6 +14,7 @@ add_library(vlacpp
     src/core/gguf.cpp
     src/core/json.cpp
     src/core/preprocess.cpp
+    src/models/ggml_bridge.cpp
     src/models/model.cpp
     src/models/mtmd_bridge.cpp
     src/models/pi0.cpp
@@ -58,6 +59,10 @@ if(VLACPP_BUILD_TESTS)
     target_include_directories(vlacpp-mtmd-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
     target_link_libraries(vlacpp-mtmd-tests PRIVATE vlacpp)
     add_test(NAME vlacpp-mtmd-bridge COMMAND vlacpp-mtmd-tests)
+    add_executable(vlacpp-ggml-tests tests/test_ggml_bridge.cpp)
+    target_include_directories(vlacpp-ggml-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(vlacpp-ggml-tests PRIVATE vlacpp)
+    add_test(NAME vlacpp-ggml-bridge COMMAND vlacpp-ggml-tests)
 
     find_package(Python3 COMPONENTS Interpreter)
     if(Python3_Interpreter_FOUND)

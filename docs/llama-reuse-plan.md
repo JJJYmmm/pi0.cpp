@@ -12,6 +12,9 @@ Current verified boundary:
 - `src/models/mtmd_bridge.cpp` includes and links the public `mtmd` API through
   `vlacpp`; `vlacpp-mtmd-bridge` verifies the default media marker and context
   params at runtime.
+- `src/models/ggml_bridge.cpp` wraps a narrow F32 `ggml_mul_mat + ggml_add`
+  graph for linear layers; the pi0/pi0.5 restricted action-head forward path
+  now uses this bridge instead of a local matmul loop.
 - `tools/gguf_writer.py` uses llama.cpp's `gguf-py` `GGUFWriter` instead of a
   local hand-written GGUF serializer.
 
