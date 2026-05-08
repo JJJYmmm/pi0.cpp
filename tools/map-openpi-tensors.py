@@ -41,6 +41,10 @@ PI05_ACTION_EXPERT_MAP = {
 }
 
 
+def all_tensor_map(header: dict[str, Any]) -> dict[str, str]:
+    return {row["name"]: row["name"] for row in header["tensors"]}
+
+
 def inspect_header(source: str) -> dict[str, Any]:
     script = Path(__file__).with_name("inspect-safetensors.py")
     raw = subprocess.check_output(
@@ -162,7 +166,7 @@ def main() -> None:
     parser.add_argument("source", help="local path, https URL, or hf://owner/repo/path/to/model.safetensors")
     parser.add_argument(
         "--family",
-        choices=["action-expert", "pi05-action-expert", "tiny-velocity"],
+        choices=["action-expert", "pi05-action-expert", "tiny-velocity", "all"],
         default="action-expert",
     )
     parser.add_argument("--output", type=Path)
@@ -170,13 +174,16 @@ def main() -> None:
     parser.add_argument("--include-inventory", action="store_true", help="include full tensor inventory and mapped coverage")
     args = parser.parse_args()
 
+    header = inspect_header(args.source)
     if args.family == "action-expert":
         mapping = ACTION_EXPERT_MAP
     elif args.family == "pi05-action-expert":
         mapping = PI05_ACTION_EXPERT_MAP
+    elif args.family == "all":
+        mapping = all_tensor_map(header)
     else:
         mapping = TINY_VELOCITY_MAP
-    manifest = build_manifest(args.source, inspect_header(args.source), mapping, args.family, args.include_inventory)
+    manifest = build_manifest(args.source, header, mapping, args.family, args.include_inventory)
     if args.require_complete and manifest["missing"]:
         raise SystemExit("missing mapped tensor(s): " + ", ".join(manifest["missing"]))
 

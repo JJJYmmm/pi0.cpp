@@ -10,7 +10,7 @@ sampling, and OpenPI comparison.
 | --- | --- | --- |
 | Git branch initialized | `git branch --show-current` reports `pi0-infer`; baseline commit is `cd35c54` (`pi0: add restricted gguf inference path`). | Done |
 | HF checkpoint discovery/download path | `tools/inspect-safetensors.py` and `tools/run-action-head-smoke.py` consume `hf://maxqualia/openpi-pi0-corkinbox100-1882950e/model.safetensors` with range reads; pi0.5 action-head smoke was verified against `hf://Tacoin/openpi-pi0.5-libero-onnx/checkpoints/pi05_libero_pytorch/model.safetensors`; `convert-openpi-to-gguf.py --norm-stats` consumes HF pi0.5 Libero config/norm stats. | Partial |
-| GGUF conversion | `tools/convert-openpi-to-gguf.py` writes GGUF for tiny velocity tensors, tiny safetensors, local/remote mapped OpenPI action-head tensors, BF16 remote tensors, and F16 local tensors. Tensor-map manifests preserve `vlacpp.metadata` from safetensors headers when present, so mapped local fixtures infer dimensions without command-line overrides. Metadata-less mapped OpenPI action-head shards infer `action_dim` from action projection tensors and `state_dim` from `state_proj.weight` when available. `tools/inspect-gguf.py` verifies emitted tensor names/shapes. Real pi0 HF inventory currently maps 10/777 tensors; real pi0.5 HF inventory maps 8/812 tensors. The unmapped tensors are `paligemma_with_expert`. | Partial |
+| GGUF conversion | `tools/convert-openpi-to-gguf.py` writes GGUF for tiny velocity tensors, tiny safetensors, local/remote mapped OpenPI action-head tensors, BF16 remote tensors, and F16 local tensors. Tensor-map manifests preserve `vlacpp.metadata` from safetensors headers when present, so mapped local fixtures infer dimensions without command-line overrides. Metadata-less mapped OpenPI action-head shards infer `action_dim` from action projection tensors and `state_dim` from `state_proj.weight` when available. `tools/inspect-gguf.py` verifies emitted tensor names/shapes. Real pi0 HF inventory currently maps 10/777 tensors for the action-head subset, while `--family all` can generate a 777/777 identity manifest from the same header. Real pi0.5 HF action-head inventory maps 8/812 tensors. Runtime support remains partial. | Partial |
 | Model forward | `src/models/pi0.cpp` implements mock/tiny velocity forward, restricted pi0 state/action-head forward, and restricted pi0.5 action/time-head forward. Full SigLIP/PaliGemma/Gemma backbone is not implemented. | Partial |
 | Flow sampling | `src/sampling/flow.cpp` Euler flow sampler is wired into mock, tiny velocity, and action-head paths. | Done for implemented paths |
 | OpenPI comparison | `tools/compare-openpi-reference.py` compares tiny OpenPI-style math; `tools/compare-openpi-policy.py` can call official OpenPI policy API when installed and requires `full-openpi` capability by default; `tests/run_fake_openpi_policy_compare.py` validates both the restricted-model rejection and explicit subset-test override. Real official checkpoint parity has not been executed. | Partial |
@@ -52,6 +52,12 @@ Expected CTest coverage:
   mapped/unmapped counts and groups.
 - `vlacpp-action-head-safetensors-summary`: `summarize-tensor-map.py` asserts
   pi0 action-head manifest family and mapped/total/unmapped coverage.
+- `vlacpp-action-head-safetensors-all-map`: local OpenPI-named safetensors
+  identity manifest for all tensors in the fixture.
+- `vlacpp-action-head-safetensors-all-summary`: `summarize-tensor-map.py`
+  asserts the all-family identity manifest coverage.
+- `vlacpp-action-head-safetensors-all-convert`: all-family identity manifest to
+  GGUF, validating full-manifest conversion mechanics on a tiny fixture.
 - `vlacpp-action-head-mapped-safetensors-convert`: mapped safetensors payloads to
   GGUF using `--tensor-map-manifest`; this test intentionally relies on
   manifest metadata instead of passing model dimensions by command line.
@@ -155,6 +161,9 @@ Latest verified smoke outputs:
   `paligemma_with_expert.paligemma.model` (602 tensors),
   `paligemma_with_expert.gemma_expert.model.layers.*` (162 tensors), and a
   small number of head/norm tensors.
+  `map-openpi-tensors.py --family all` can generate a 777/777 identity manifest
+  for the real pi0 header, but the runtime still cannot execute those backbone
+  tensors.
 - Runtime does not implement SigLIP image encoder, PaliGemma/Gemma prefix/suffix
   transformer, KV cache execution, or full pi0.5 AdaRMS conditioning. The
   restricted pi0.5 path only approximates the time-conditioned action head.

@@ -238,6 +238,9 @@ backbone work is visible at block granularity, for example pi0 splits into
 `paligemma_with_expert.gemma_expert.model.layers.*`.
 Use `tools/summarize-tensor-map.py` to inspect an inventory manifest or assert
 expected coverage in automation.
+`--family all` emits an identity mapping for every tensor in the safetensors
+header, which is useful for full-checkpoint GGUF conversion experiments; runtime
+support still depends on implementing the corresponding graph.
 
 See `docs/pi0-infer-audit.md` for the current prompt-to-artifact completion
 audit and the remaining gaps before full OpenPI parity.
