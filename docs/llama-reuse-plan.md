@@ -21,6 +21,9 @@ Current verified boundary:
   varying/input dimension, `ne1` is the output row count). OpenPI source tensor
   metadata remains `[out, in]`, but the runtime-facing GGUF shape is
   `[in, out]`.
+- `tools/map-openpi-tensors.py --family pi0-vision-mtmd` maps OpenPI SigLIP
+  vision tower tensors into llama.cpp mtmd `v.*` names such as
+  `v.patch_embd.weight`, `v.position_embd.weight`, and `v.blk.*.attn_q.weight`.
 
 Implication for pi0:
 

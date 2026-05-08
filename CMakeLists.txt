@@ -89,6 +89,7 @@ if(VLACPP_BUILD_TESTS)
         set(VLACPP_PI05_F16_SAFETENSORS "${CMAKE_CURRENT_BINARY_DIR}/pi05-action-head-f16.safetensors")
         set(VLACPP_PI05_F16_GGUF "${CMAKE_CURRENT_BINARY_DIR}/pi05-action-head-f16.gguf")
         set(VLACPP_OPENPI_GRAPH_MANIFEST "${CMAKE_CURRENT_SOURCE_DIR}/tests/openpi-graph-manifest.json")
+        set(VLACPP_PI0_VISION_MTMD_MANIFEST "${CMAKE_CURRENT_BINARY_DIR}/pi0-vision-mtmd-map.json")
         add_test(
             NAME vlacpp-openpi-graph-summary
             COMMAND
@@ -122,6 +123,30 @@ if(VLACPP_BUILD_TESTS)
                 --expect-action-expert-decision custom-ggml-graph
                 --expect-action-head-decision custom-direct-ggml
         )
+        add_test(
+            NAME vlacpp-pi0-vision-mtmd-map
+            COMMAND
+                ${Python3_EXECUTABLE}
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/map-openpi-tensors.py"
+                "${VLACPP_OPENPI_GRAPH_MANIFEST}"
+                --family pi0-vision-mtmd
+                --require-complete
+                --include-inventory
+                --output "${VLACPP_PI0_VISION_MTMD_MANIFEST}"
+        )
+        add_test(
+            NAME vlacpp-pi0-vision-mtmd-summary
+            COMMAND
+                ${Python3_EXECUTABLE}
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/summarize-tensor-map.py"
+                "${VLACPP_PI0_VISION_MTMD_MANIFEST}"
+                --expect-family pi0-vision-mtmd
+                --expect-expected 3
+                --expect-mapped 3
+                --expect-total 14
+                --expect-unmapped 11
+        )
+        set_tests_properties(vlacpp-pi0-vision-mtmd-summary PROPERTIES DEPENDS vlacpp-pi0-vision-mtmd-map)
         add_test(
             NAME vlacpp-tiny-gguf-convert
             COMMAND

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -40,9 +41,67 @@ PI05_ACTION_EXPERT_MAP = {
     "action_out_proj.bias": "vlacpp.openpi.action_out_proj.bias",
 }
 
+VISION_PREFIX = "paligemma_with_expert.paligemma.model.vision_tower.vision_model."
+
+VISION_SUFFIX_MAP = {
+    "embeddings.patch_embedding.weight": "v.patch_embd.weight",
+    "embeddings.patch_embedding.bias": "v.patch_embd.bias",
+    "embeddings.position_embedding.weight": "v.position_embd.weight",
+    "post_layernorm.weight": "v.post_ln.weight",
+    "post_layernorm.bias": "v.post_ln.bias",
+}
+
+VISION_LAYER_SUFFIX_MAP = {
+    "layer_norm1.weight": "v.blk.{layer}.ln1.weight",
+    "layer_norm1.bias": "v.blk.{layer}.ln1.bias",
+    "layer_norm2.weight": "v.blk.{layer}.ln2.weight",
+    "layer_norm2.bias": "v.blk.{layer}.ln2.bias",
+    "self_attn.q_proj.weight": "v.blk.{layer}.attn_q.weight",
+    "self_attn.q_proj.bias": "v.blk.{layer}.attn_q.bias",
+    "self_attn.k_proj.weight": "v.blk.{layer}.attn_k.weight",
+    "self_attn.k_proj.bias": "v.blk.{layer}.attn_k.bias",
+    "self_attn.v_proj.weight": "v.blk.{layer}.attn_v.weight",
+    "self_attn.v_proj.bias": "v.blk.{layer}.attn_v.bias",
+    "self_attn.out_proj.weight": "v.blk.{layer}.attn_out.weight",
+    "self_attn.out_proj.bias": "v.blk.{layer}.attn_out.bias",
+    "mlp.fc1.weight": "v.blk.{layer}.ffn_up.weight",
+    "mlp.fc1.bias": "v.blk.{layer}.ffn_up.bias",
+    "mlp.fc2.weight": "v.blk.{layer}.ffn_down.weight",
+    "mlp.fc2.bias": "v.blk.{layer}.ffn_down.bias",
+}
+
 
 def all_tensor_map(header: dict[str, Any]) -> dict[str, str]:
     return {row["name"]: row["name"] for row in header["tensors"]}
+
+
+def strip_model_prefix(name: str) -> str:
+    return name[len("model.") :] if name.startswith("model.") else name
+
+
+def pi0_vision_mtmd_tensor_map(header: dict[str, Any]) -> dict[str, str]:
+    mapping = {}
+    layer_re = re.compile(
+        re.escape(VISION_PREFIX)
+        + r"encoder\.layers\.(\d+)\.(.+)"
+    )
+    for row in header["tensors"]:
+        source = row["name"]
+        name = strip_model_prefix(source)
+        if not name.startswith(VISION_PREFIX):
+            continue
+        suffix = name[len(VISION_PREFIX) :]
+        target = VISION_SUFFIX_MAP.get(suffix)
+        if target is None:
+            match = layer_re.match(name)
+            if match:
+                layer = int(match.group(1))
+                template = VISION_LAYER_SUFFIX_MAP.get(match.group(2))
+                if template is not None:
+                    target = template.format(layer=layer)
+        if target is not None:
+            mapping[source] = target
+    return mapping
 
 
 def resolve_runtime_aliases(header: dict[str, Any], runtime_aliases: dict[str, str]) -> dict[str, str]:
@@ -68,6 +127,22 @@ def full_tensor_map(header: dict[str, Any], runtime_aliases: dict[str, str]) -> 
 
 
 def inspect_header(source: str) -> dict[str, Any]:
+    path = Path(source)
+    if path.exists() and path.suffix == ".json":
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+        if "tensors" in loaded:
+            return {
+                "metadata": loaded.get("metadata", {}),
+                "tensors": [
+                    {
+                        "name": row.get("source", row.get("name")),
+                        "dtype": row["dtype"],
+                        "shape": row["shape"],
+                        "data_offsets": row.get("data_offsets", [0, 0]),
+                    }
+                    for row in loaded["tensors"]
+                ],
+            }
     script = Path(__file__).with_name("inspect-safetensors.py")
     raw = subprocess.check_output(
         [sys.executable, str(script), source, "--json", "--include-metadata", "--limit", "100000"],
@@ -188,7 +263,15 @@ def main() -> None:
     parser.add_argument("source", help="local path, https URL, hf://owner/repo/path, or ms://owner/repo/path")
     parser.add_argument(
         "--family",
-        choices=["action-expert", "pi05-action-expert", "tiny-velocity", "all", "pi0-full", "pi05-full"],
+        choices=[
+            "action-expert",
+            "pi05-action-expert",
+            "tiny-velocity",
+            "all",
+            "pi0-full",
+            "pi05-full",
+            "pi0-vision-mtmd",
+        ],
         default="action-expert",
     )
     parser.add_argument("--output", type=Path)
@@ -207,6 +290,8 @@ def main() -> None:
         mapping = full_tensor_map(header, ACTION_EXPERT_MAP)
     elif args.family == "pi05-full":
         mapping = full_tensor_map(header, PI05_ACTION_EXPERT_MAP)
+    elif args.family == "pi0-vision-mtmd":
+        mapping = pi0_vision_mtmd_tensor_map(header)
     else:
         mapping = TINY_VELOCITY_MAP
     manifest = build_manifest(args.source, header, mapping, args.family, args.include_inventory)
