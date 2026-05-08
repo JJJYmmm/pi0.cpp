@@ -1,5 +1,7 @@
 #include "models/pi0_language_prefix.h"
 
+#include "models/ggml_runtime.h"
+
 #include "ggml-cpu.h"
 #include "ggml.h"
 
@@ -37,7 +39,7 @@ void run_norm(
     const std::vector<float> & tokens,
     int batch,
     int64_t width,
-    int n_threads,
+    const BackendConfig & backend,
     std::vector<float> & out) {
     require_vector_shape(norm_w, width, "language prefix norm");
     if (batch <= 0 || tokens.size() != static_cast<size_t>(batch) * static_cast<size_t>(width)) {
@@ -48,8 +50,8 @@ void run_norm(
         (norm_w.data.size() + tokens.size() + static_cast<size_t>(width) * static_cast<size_t>(batch)) *
         sizeof(float);
     const size_t context_size = std::max<size_t>(64 * 1024 * 1024, tensor_bytes * 4 + 1024 * 1024);
-    ggml_init_params params{};
-    params.mem_size = context_size;
+    GgmlRunner runner(backend);
+    ggml_init_params params = runner.init_params(context_size);
     ggml_context * ctx = ggml_init(params);
     if (ctx == nullptr) {
         throw std::runtime_error("failed to initialize ggml context");
@@ -57,24 +59,21 @@ void run_norm(
 
     ggml_tensor * x = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, width, batch);
     ggml_tensor * scale = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, width);
-    std::memcpy(ggml_get_data_f32(x), tokens.data(), tokens.size() * sizeof(float));
-    float * scale_data = ggml_get_data_f32(scale);
+    std::vector<float> scale_host(static_cast<size_t>(width));
     for (int64_t i = 0; i < width; ++i) {
-        scale_data[i] = 1.0f + norm_w.data[static_cast<size_t>(i)];
+        scale_host[static_cast<size_t>(i)] = 1.0f + norm_w.data[static_cast<size_t>(i)];
     }
+    std::vector<GgmlInput> inputs;
+    runner.set_input(inputs, x, tokens.data(), tokens.size() * sizeof(float));
+    runner.set_input(inputs, scale, scale_host.data(), scale_host.size() * sizeof(float));
 
     ggml_tensor * y = ggml_mul(ctx, ggml_rms_norm(ctx, x, 1.0e-6f), scale);
     ggml_cgraph * graph = ggml_new_graph(ctx);
     ggml_build_forward_expand(graph, y);
-    const ggml_status status = ggml_graph_compute_with_ctx(ctx, graph, std::max(1, n_threads));
-    if (status != GGML_STATUS_SUCCESS) {
-        ggml_free(ctx);
-        throw std::runtime_error("ggml language prefix norm graph compute failed");
-    }
+    runner.compute(ctx, graph, inputs, "ggml language prefix norm graph compute failed");
 
-    out.assign(
-        ggml_get_data_f32(y),
-        ggml_get_data_f32(y) + static_cast<size_t>(batch) * static_cast<size_t>(width));
+    out.resize(static_cast<size_t>(batch) * static_cast<size_t>(width));
+    runner.get_output(y, out.data(), out.size() * sizeof(float));
     ggml_free(ctx);
 }
 
@@ -159,7 +158,7 @@ void Pi0LanguagePrefix::norm_batch(
     if (norm_w == nullptr) {
         throw std::invalid_argument("missing pi0 language prefix norm tensor");
     }
-    run_norm(*norm_w, tokens, batch, config_.openpi_language_width, backend_.n_threads, out);
+    run_norm(*norm_w, tokens, batch, config_.openpi_language_width, backend_, out);
 }
 
 void Pi0LanguagePrefix::final_norm_batch(const std::vector<float> & tokens, int batch, std::vector<float> & out) const {
@@ -167,7 +166,7 @@ void Pi0LanguagePrefix::final_norm_batch(const std::vector<float> & tokens, int 
     if (norm_w == nullptr) {
         throw std::invalid_argument("missing pi0 language prefix final norm tensor");
     }
-    run_norm(*norm_w, tokens, batch, config_.openpi_language_width, backend_.n_threads, out);
+    run_norm(*norm_w, tokens, batch, config_.openpi_language_width, backend_, out);
 }
 
 void Pi0LanguagePrefix::qkv_batch(
@@ -198,8 +197,8 @@ void Pi0LanguagePrefix::qkv_batch(
         (q_w->data.size() + k_w->data.size() + v_w->data.size() + tokens.size()) * sizeof(float) +
         static_cast<size_t>(batch) * static_cast<size_t>(q_out + 2 * kv_out) * sizeof(float);
     const size_t context_size = std::max<size_t>(64 * 1024 * 1024, tensor_bytes * 4 + 1024 * 1024);
-    ggml_init_params params{};
-    params.mem_size = context_size;
+    GgmlRunner runner(backend_);
+    ggml_init_params params = runner.init_params(context_size);
     ggml_context * ctx = ggml_init(params);
     if (ctx == nullptr) {
         throw std::runtime_error("failed to initialize ggml context");
@@ -209,10 +208,11 @@ void Pi0LanguagePrefix::qkv_batch(
     ggml_tensor * kw = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, width, kv_out);
     ggml_tensor * vw = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, width, kv_out);
     ggml_tensor * x = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, width, batch);
-    copy_tensor_data(qw, *q_w);
-    copy_tensor_data(kw, *k_w);
-    copy_tensor_data(vw, *v_w);
-    std::memcpy(ggml_get_data_f32(x), tokens.data(), tokens.size() * sizeof(float));
+    std::vector<GgmlInput> inputs;
+    runner.set_input(inputs, qw, q_w->data.data(), q_w->data.size() * sizeof(float));
+    runner.set_input(inputs, kw, k_w->data.data(), k_w->data.size() * sizeof(float));
+    runner.set_input(inputs, vw, v_w->data.data(), v_w->data.size() * sizeof(float));
+    runner.set_input(inputs, x, tokens.data(), tokens.size() * sizeof(float));
 
     ggml_tensor * q_out_tensor = ggml_mul_mat(ctx, qw, x);
     ggml_tensor * k_out_tensor = ggml_mul_mat(ctx, kw, x);
@@ -221,15 +221,14 @@ void Pi0LanguagePrefix::qkv_batch(
     ggml_build_forward_expand(graph, q_out_tensor);
     ggml_build_forward_expand(graph, k_out_tensor);
     ggml_build_forward_expand(graph, v_out_tensor);
-    const ggml_status status = ggml_graph_compute_with_ctx(ctx, graph, std::max(1, backend_.n_threads));
-    if (status != GGML_STATUS_SUCCESS) {
-        ggml_free(ctx);
-        throw std::runtime_error("ggml language prefix QKV graph compute failed");
-    }
+    runner.compute(ctx, graph, inputs, "ggml language prefix QKV graph compute failed");
 
-    q.assign(ggml_get_data_f32(q_out_tensor), ggml_get_data_f32(q_out_tensor) + static_cast<size_t>(batch) * q_out);
-    k.assign(ggml_get_data_f32(k_out_tensor), ggml_get_data_f32(k_out_tensor) + static_cast<size_t>(batch) * kv_out);
-    v.assign(ggml_get_data_f32(v_out_tensor), ggml_get_data_f32(v_out_tensor) + static_cast<size_t>(batch) * kv_out);
+    q.resize(static_cast<size_t>(batch) * q_out);
+    k.resize(static_cast<size_t>(batch) * kv_out);
+    v.resize(static_cast<size_t>(batch) * kv_out);
+    runner.get_output(q_out_tensor, q.data(), q.size() * sizeof(float));
+    runner.get_output(k_out_tensor, k.data(), k.size() * sizeof(float));
+    runner.get_output(v_out_tensor, v.data(), v.size() * sizeof(float));
     ggml_free(ctx);
 }
 
@@ -252,8 +251,8 @@ void Pi0LanguagePrefix::rope_batch(
 
     const size_t tensor_bytes = (values.size() + positions.size()) * sizeof(float);
     const size_t context_size = std::max<size_t>(64 * 1024 * 1024, tensor_bytes * 4 + 1024 * 1024);
-    ggml_init_params params{};
-    params.mem_size = context_size;
+    GgmlRunner runner(backend_);
+    ggml_init_params params = runner.init_params(context_size);
     ggml_context * ctx = ggml_init(params);
     if (ctx == nullptr) {
         throw std::runtime_error("failed to initialize ggml context");
@@ -261,23 +260,22 @@ void Pi0LanguagePrefix::rope_batch(
 
     ggml_tensor * x = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, head_dim, heads, tokens);
     ggml_tensor * pos = ggml_new_tensor_1d(ctx, GGML_TYPE_I32, tokens);
-    std::memcpy(ggml_get_data_f32(x), values.data(), values.size() * sizeof(float));
-    int32_t * pos_data = static_cast<int32_t *>(pos->data);
+    std::vector<int32_t> pos_host(static_cast<size_t>(tokens));
     for (int i = 0; i < tokens; ++i) {
-        pos_data[i] = static_cast<int32_t>(positions[static_cast<size_t>(i)]);
+        pos_host[static_cast<size_t>(i)] = static_cast<int32_t>(positions[static_cast<size_t>(i)]);
     }
+    std::vector<GgmlInput> inputs;
+    runner.set_input(inputs, x, values.data(), values.size() * sizeof(float));
+    runner.set_input(inputs, pos, pos_host.data(), pos_host.size() * sizeof(int32_t));
 
     ggml_tensor * y = ggml_rope_ext(
         ctx, x, pos, nullptr, head_dim, GGML_ROPE_TYPE_NEOX, 8192, 10000.0f, 1.0f, 0.0f, 1.0f, 0.0f, 0.0f);
     ggml_cgraph * graph = ggml_new_graph(ctx);
     ggml_build_forward_expand(graph, y);
-    const ggml_status status = ggml_graph_compute_with_ctx(ctx, graph, std::max(1, backend_.n_threads));
-    if (status != GGML_STATUS_SUCCESS) {
-        ggml_free(ctx);
-        throw std::runtime_error("ggml language prefix RoPE graph compute failed");
-    }
+    runner.compute(ctx, graph, inputs, "ggml language prefix RoPE graph compute failed");
 
-    out.assign(ggml_get_data_f32(y), ggml_get_data_f32(y) + value_size);
+    out.resize(value_size);
+    runner.get_output(y, out.data(), out.size() * sizeof(float));
     ggml_free(ctx);
 }
 
@@ -301,8 +299,8 @@ void Pi0LanguagePrefix::self_attention_batch(
 
     const size_t tensor_bytes = (q_size * 2 + kv_size * 2) * sizeof(float);
     const size_t context_size = std::max<size_t>(64 * 1024 * 1024, tensor_bytes * 8 + 1024 * 1024);
-    ggml_init_params params{};
-    params.mem_size = context_size;
+    GgmlRunner runner(backend_);
+    ggml_init_params params = runner.init_params(context_size);
     ggml_context * ctx = ggml_init(params);
     if (ctx == nullptr) {
         throw std::runtime_error("failed to initialize ggml context");
@@ -311,9 +309,10 @@ void Pi0LanguagePrefix::self_attention_batch(
     ggml_tensor * q_cur = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, head_dim, heads, tokens);
     ggml_tensor * k_cur = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, head_dim, kv_heads, tokens);
     ggml_tensor * v_cur = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, head_dim, kv_heads, tokens);
-    std::memcpy(ggml_get_data_f32(q_cur), q.data(), q.size() * sizeof(float));
-    std::memcpy(ggml_get_data_f32(k_cur), k.data(), k.size() * sizeof(float));
-    std::memcpy(ggml_get_data_f32(v_cur), v.data(), v.size() * sizeof(float));
+    std::vector<GgmlInput> inputs;
+    runner.set_input(inputs, q_cur, q.data(), q.size() * sizeof(float));
+    runner.set_input(inputs, k_cur, k.data(), k.size() * sizeof(float));
+    runner.set_input(inputs, v_cur, v.data(), v.size() * sizeof(float));
     if (kv_heads != heads) {
         ggml_tensor * kv_repeat_shape = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, head_dim, heads, tokens);
         k_cur = ggml_repeat(ctx, k_cur, kv_repeat_shape);
@@ -332,13 +331,10 @@ void Pi0LanguagePrefix::self_attention_batch(
 
     ggml_cgraph * graph = ggml_new_graph(ctx);
     ggml_build_forward_expand(graph, y);
-    const ggml_status status = ggml_graph_compute_with_ctx(ctx, graph, std::max(1, backend_.n_threads));
-    if (status != GGML_STATUS_SUCCESS) {
-        ggml_free(ctx);
-        throw std::runtime_error("ggml language prefix attention graph compute failed");
-    }
+    runner.compute(ctx, graph, inputs, "ggml language prefix attention graph compute failed");
 
-    out.assign(ggml_get_data_f32(y), ggml_get_data_f32(y) + q_size);
+    out.resize(q_size);
+    runner.get_output(y, out.data(), out.size() * sizeof(float));
     ggml_free(ctx);
 }
 
@@ -362,8 +358,8 @@ void Pi0LanguagePrefix::attention_out_batch(
         (out_w->data.size() + values.size()) * sizeof(float) +
         static_cast<size_t>(batch) * static_cast<size_t>(width) * sizeof(float);
     const size_t context_size = std::max<size_t>(64 * 1024 * 1024, tensor_bytes * 4 + 1024 * 1024);
-    ggml_init_params params{};
-    params.mem_size = context_size;
+    GgmlRunner runner(backend_);
+    ggml_init_params params = runner.init_params(context_size);
     ggml_context * ctx = ggml_init(params);
     if (ctx == nullptr) {
         throw std::runtime_error("failed to initialize ggml context");
@@ -371,19 +367,17 @@ void Pi0LanguagePrefix::attention_out_batch(
 
     ggml_tensor * w = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, q_out, width);
     ggml_tensor * x = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, q_out, batch);
-    copy_tensor_data(w, *out_w);
-    std::memcpy(ggml_get_data_f32(x), values.data(), values.size() * sizeof(float));
+    std::vector<GgmlInput> inputs;
+    runner.set_input(inputs, w, out_w->data.data(), out_w->data.size() * sizeof(float));
+    runner.set_input(inputs, x, values.data(), values.size() * sizeof(float));
 
     ggml_tensor * y = ggml_mul_mat(ctx, w, x);
     ggml_cgraph * graph = ggml_new_graph(ctx);
     ggml_build_forward_expand(graph, y);
-    const ggml_status status = ggml_graph_compute_with_ctx(ctx, graph, std::max(1, backend_.n_threads));
-    if (status != GGML_STATUS_SUCCESS) {
-        ggml_free(ctx);
-        throw std::runtime_error("ggml language prefix attention output graph compute failed");
-    }
+    runner.compute(ctx, graph, inputs, "ggml language prefix attention output graph compute failed");
 
-    out.assign(ggml_get_data_f32(y), ggml_get_data_f32(y) + static_cast<size_t>(batch) * static_cast<size_t>(width));
+    out.resize(static_cast<size_t>(batch) * static_cast<size_t>(width));
+    runner.get_output(y, out.data(), out.size() * sizeof(float));
     ggml_free(ctx);
 }
 
@@ -412,8 +406,8 @@ void Pi0LanguagePrefix::mlp_batch(
         (gate_w->data.size() + up_w->data.size() + down_w->data.size() + tokens.size()) * sizeof(float) +
         static_cast<size_t>(batch) * static_cast<size_t>(hidden + width) * sizeof(float);
     const size_t context_size = std::max<size_t>(64 * 1024 * 1024, tensor_bytes * 4 + 1024 * 1024);
-    ggml_init_params params{};
-    params.mem_size = context_size;
+    GgmlRunner runner(backend_);
+    ggml_init_params params = runner.init_params(context_size);
     ggml_context * ctx = ggml_init(params);
     if (ctx == nullptr) {
         throw std::runtime_error("failed to initialize ggml context");
@@ -423,10 +417,11 @@ void Pi0LanguagePrefix::mlp_batch(
     ggml_tensor * up = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, width, hidden);
     ggml_tensor * down = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, hidden, width);
     ggml_tensor * x = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, width, batch);
-    copy_tensor_data(gate, *gate_w);
-    copy_tensor_data(up, *up_w);
-    copy_tensor_data(down, *down_w);
-    std::memcpy(ggml_get_data_f32(x), tokens.data(), tokens.size() * sizeof(float));
+    std::vector<GgmlInput> inputs;
+    runner.set_input(inputs, gate, gate_w->data.data(), gate_w->data.size() * sizeof(float));
+    runner.set_input(inputs, up, up_w->data.data(), up_w->data.size() * sizeof(float));
+    runner.set_input(inputs, down, down_w->data.data(), down_w->data.size() * sizeof(float));
+    runner.set_input(inputs, x, tokens.data(), tokens.size() * sizeof(float));
 
     ggml_tensor * gate_out = ggml_gelu(ctx, ggml_mul_mat(ctx, gate, x));
     ggml_tensor * up_out = ggml_mul_mat(ctx, up, x);
@@ -434,13 +429,10 @@ void Pi0LanguagePrefix::mlp_batch(
     ggml_tensor * y = ggml_mul_mat(ctx, down, hidden_out);
     ggml_cgraph * graph = ggml_new_graph(ctx);
     ggml_build_forward_expand(graph, y);
-    const ggml_status status = ggml_graph_compute_with_ctx(ctx, graph, std::max(1, backend_.n_threads));
-    if (status != GGML_STATUS_SUCCESS) {
-        ggml_free(ctx);
-        throw std::runtime_error("ggml language prefix MLP graph compute failed");
-    }
+    runner.compute(ctx, graph, inputs, "ggml language prefix MLP graph compute failed");
 
-    out.assign(ggml_get_data_f32(y), ggml_get_data_f32(y) + static_cast<size_t>(batch) * static_cast<size_t>(width));
+    out.resize(static_cast<size_t>(batch) * static_cast<size_t>(width));
+    runner.get_output(y, out.data(), out.size() * sizeof(float));
     ggml_free(ctx);
 }
 

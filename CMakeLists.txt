@@ -15,6 +15,7 @@ add_library(vlacpp
     src/core/json.cpp
     src/core/preprocess.cpp
     src/models/model.cpp
+    src/models/ggml_runtime.cpp
     src/models/pi0_action_expert.cpp
     src/models/pi0_action_decoder.cpp
     src/models/pi0_language_prefix.cpp

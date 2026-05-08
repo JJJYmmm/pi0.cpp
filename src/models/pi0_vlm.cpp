@@ -1,5 +1,7 @@
 #include "models/pi0_vlm.h"
 
+#include "models/ggml_runtime.h"
+
 #include "ggml-cpu.h"
 #include "ggml.h"
 
@@ -73,8 +75,8 @@ void Pi0Vlm::project_vision_tokens(
         (weight->data.size() + bias->data.size() + vision_tokens.size()) * sizeof(float) +
         static_cast<size_t>(token_count) * static_cast<size_t>(language_width) * sizeof(float);
     const size_t context_size = std::max<size_t>(64 * 1024 * 1024, tensor_bytes * 4 + 1024 * 1024);
-    ggml_init_params params{};
-    params.mem_size = context_size;
+    GgmlRunner runner(backend_);
+    ggml_init_params params = runner.init_params(context_size);
     ggml_context * ctx = ggml_init(params);
     if (ctx == nullptr) {
         throw std::runtime_error("failed to initialize ggml context");
@@ -83,22 +85,18 @@ void Pi0Vlm::project_vision_tokens(
     ggml_tensor * w = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, vision_width, language_width);
     ggml_tensor * x = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, vision_width, token_count);
     ggml_tensor * b = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, language_width);
-    std::memcpy(ggml_get_data_f32(w), weight->data.data(), weight->data.size() * sizeof(float));
-    std::memcpy(ggml_get_data_f32(x), vision_tokens.data(), vision_tokens.size() * sizeof(float));
-    std::memcpy(ggml_get_data_f32(b), bias->data.data(), bias->data.size() * sizeof(float));
+    std::vector<GgmlInput> inputs;
+    runner.set_input(inputs, w, weight->data.data(), weight->data.size() * sizeof(float));
+    runner.set_input(inputs, x, vision_tokens.data(), vision_tokens.size() * sizeof(float));
+    runner.set_input(inputs, b, bias->data.data(), bias->data.size() * sizeof(float));
 
     ggml_tensor * y = ggml_add(ctx, ggml_mul_mat(ctx, w, x), b);
     ggml_cgraph * graph = ggml_new_graph(ctx);
     ggml_build_forward_expand(graph, y);
-    const ggml_status status = ggml_graph_compute_with_ctx(ctx, graph, std::max(1, backend_.n_threads));
-    if (status != GGML_STATUS_SUCCESS) {
-        ggml_free(ctx);
-        throw std::runtime_error("ggml pi0 vision projector graph compute failed");
-    }
+    runner.compute(ctx, graph, inputs, "ggml pi0 vision projector graph compute failed");
 
-    out.assign(
-        ggml_get_data_f32(y),
-        ggml_get_data_f32(y) + static_cast<size_t>(token_count) * static_cast<size_t>(language_width));
+    out.resize(static_cast<size_t>(token_count) * static_cast<size_t>(language_width));
+    runner.get_output(y, out.data(), out.size() * sizeof(float));
     ggml_free(ctx);
 }
 

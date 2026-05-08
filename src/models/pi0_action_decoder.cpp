@@ -1,5 +1,7 @@
 #include "models/pi0_action_decoder.h"
 
+#include "models/ggml_runtime.h"
+
 #include "ggml-cpu.h"
 #include "ggml.h"
 
@@ -17,7 +19,7 @@ void run_mul_mat_add_batch(
     const std::vector<float> & input,
     int batch,
     std::vector<float> & output,
-    int n_threads,
+    const BackendConfig & backend,
     bool silu = false) {
     if (weight.shape.size() != 2 || bias.shape.size() != 1) {
         throw std::invalid_argument("linear expects rank-2 weight and rank-1 bias");
@@ -38,10 +40,8 @@ void run_mul_mat_add_batch(
         input.size() * sizeof(float) +
         static_cast<size_t>(batch) * static_cast<size_t>(ne1) * sizeof(float);
     const size_t context_size = std::max<size_t>(64 * 1024 * 1024, tensor_bytes * 4 + 1024 * 1024);
-    ggml_init_params params{};
-    params.mem_size = context_size;
-    params.mem_buffer = nullptr;
-    params.no_alloc = false;
+    GgmlRunner runner(backend);
+    ggml_init_params params = runner.init_params(context_size);
     ggml_context * ctx = ggml_init(params);
     if (ctx == nullptr) {
         throw std::runtime_error("failed to initialize ggml context");
@@ -50,9 +50,10 @@ void run_mul_mat_add_batch(
     ggml_tensor * w = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, ne0, ne1);
     ggml_tensor * x = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, ne0, batch);
     ggml_tensor * b = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, ne1);
-    std::memcpy(ggml_get_data_f32(w), weight.data.data(), weight.data.size() * sizeof(float));
-    std::memcpy(ggml_get_data_f32(x), input.data(), input.size() * sizeof(float));
-    std::memcpy(ggml_get_data_f32(b), bias.data.data(), bias.data.size() * sizeof(float));
+    std::vector<GgmlInput> inputs;
+    runner.set_input(inputs, w, weight.data.data(), weight.data.size() * sizeof(float));
+    runner.set_input(inputs, x, input.data(), input.size() * sizeof(float));
+    runner.set_input(inputs, b, bias.data.data(), bias.data.size() * sizeof(float));
 
     ggml_tensor * y = ggml_add(ctx, ggml_mul_mat(ctx, w, x), b);
     if (silu) {
@@ -60,16 +61,10 @@ void run_mul_mat_add_batch(
     }
     ggml_cgraph * graph = ggml_new_graph(ctx);
     ggml_build_forward_expand(graph, y);
-    const int threads = std::max(1, n_threads);
-    const ggml_status status = ggml_graph_compute_with_ctx(ctx, graph, threads);
-    if (status != GGML_STATUS_SUCCESS) {
-        ggml_free(ctx);
-        throw std::runtime_error("ggml linear graph compute failed");
-    }
+    runner.compute(ctx, graph, inputs, "ggml linear graph compute failed");
 
-    output.assign(
-        ggml_get_data_f32(y),
-        ggml_get_data_f32(y) + static_cast<size_t>(batch) * static_cast<size_t>(ne1));
+    output.resize(static_cast<size_t>(batch) * static_cast<size_t>(ne1));
+    runner.get_output(y, output.data(), output.size() * sizeof(float));
     ggml_free(ctx);
 }
 
@@ -78,8 +73,8 @@ void run_mul_mat_add(
     const Tensor & bias,
     const std::vector<float> & input,
     std::vector<float> & output,
-    int n_threads) {
-    run_mul_mat_add_batch(weight, bias, input, 1, output, n_threads);
+    const BackendConfig & backend) {
+    run_mul_mat_add_batch(weight, bias, input, 1, output, backend);
 }
 
 std::vector<float> posemb_sincos(float time, size_t width) {
@@ -133,7 +128,7 @@ void Pi0ActionDecoder::state_context(const std::vector<float> & state, std::vect
         out.clear();
         return;
     }
-    run_mul_mat_add(*state_w, *state_b, state, out, backend_.n_threads);
+    run_mul_mat_add(*state_w, *state_b, state, out, backend_);
 }
 
 void Pi0ActionDecoder::velocity_batch(
@@ -153,22 +148,22 @@ void Pi0ActionDecoder::velocity_batch(
 
     if (has_pi05_action_head()) {
         std::vector<float> action_tokens;
-        run_mul_mat_add_batch(in_w, in_b, actions, batch, action_tokens, backend_.n_threads);
+        run_mul_mat_add_batch(in_w, in_b, actions, batch, action_tokens, backend_);
         const Tensor & time_in_w = *find_tensor("vlacpp.openpi.pi05.time_mlp_in.weight");
         const Tensor & time_in_b = *find_tensor("vlacpp.openpi.pi05.time_mlp_in.bias");
         const Tensor & time_out_w = *find_tensor("vlacpp.openpi.pi05.time_mlp_out.weight");
         const Tensor & time_out_b = *find_tensor("vlacpp.openpi.pi05.time_mlp_out.bias");
         std::vector<float> hidden;
-        run_mul_mat_add_batch(time_in_w, time_in_b, posemb_sincos(time, width), 1, hidden, backend_.n_threads, true);
+        run_mul_mat_add_batch(time_in_w, time_in_b, posemb_sincos(time, width), 1, hidden, backend_, true);
         std::vector<float> time_context;
-        run_mul_mat_add_batch(time_out_w, time_out_b, hidden, 1, time_context, backend_.n_threads, true);
+        run_mul_mat_add_batch(time_out_w, time_out_b, hidden, 1, time_context, backend_, true);
         for (int row = 0; row < batch; ++row) {
             const size_t offset = static_cast<size_t>(row) * width;
             for (size_t i = 0; i < width; ++i) {
                 action_tokens[offset + i] += time_context[i];
             }
         }
-        run_mul_mat_add_batch(out_w, out_b, action_tokens, batch, out, backend_.n_threads);
+        run_mul_mat_add_batch(out_w, out_b, action_tokens, batch, out, backend_);
         return;
     }
 
@@ -244,7 +239,7 @@ void Pi0ActionDecoder::velocity_batch(
     std::vector<float> action_expert_tokens(
         suffix_tokens.begin() + static_cast<std::ptrdiff_t>(action_offset),
         suffix_tokens.end());
-    run_mul_mat_add_batch(out_w, out_b, action_expert_tokens, batch, out, backend_.n_threads);
+    run_mul_mat_add_batch(out_w, out_b, action_expert_tokens, batch, out, backend_);
 }
 
 void Pi0ActionDecoder::suffix_embeddings(
@@ -262,7 +257,7 @@ void Pi0ActionDecoder::suffix_embeddings(
     const size_t width = static_cast<size_t>(in_w.shape[1]);
 
     std::vector<float> action_tokens;
-    run_mul_mat_add_batch(in_w, in_b, actions, batch, action_tokens, backend_.n_threads);
+    run_mul_mat_add_batch(in_w, in_b, actions, batch, action_tokens, backend_);
 
     const std::vector<float> time_emb = posemb_sincos(time, width);
     std::vector<float> action_time(static_cast<size_t>(batch) * width * 2, 0.0f);
@@ -279,9 +274,9 @@ void Pi0ActionDecoder::suffix_embeddings(
             action_time.begin() + static_cast<std::ptrdiff_t>(dst + width));
     }
     std::vector<float> hidden;
-    run_mul_mat_add_batch(time_in_w, time_in_b, action_time, batch, hidden, backend_.n_threads, true);
+    run_mul_mat_add_batch(time_in_w, time_in_b, action_time, batch, hidden, backend_, true);
     std::vector<float> action_expert_tokens;
-    run_mul_mat_add_batch(time_out_w, time_out_b, hidden, batch, action_expert_tokens, backend_.n_threads);
+    run_mul_mat_add_batch(time_out_w, time_out_b, hidden, batch, action_expert_tokens, backend_);
 
     out.clear();
     out.reserve(action_expert_tokens.size() + state_context.size());
