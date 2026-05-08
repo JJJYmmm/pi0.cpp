@@ -13,7 +13,7 @@ sampling, and OpenPI comparison.
 | GGUF conversion | `tools/convert-openpi-to-gguf.py` writes GGUF through `tools/gguf_writer.py`, which now delegates to llama.cpp's `gguf-py` `GGUFWriter`, for tiny velocity tensors, tiny safetensors, local/remote mapped OpenPI action-head tensors, BF16 remote tensors, F16 local tensors, and the real ModelScope pi0 action-head/projector subset. Runtime-facing GGUF 2D tensor shapes use ggml `ne` ordering (`[in, out]` for linear weights) while source safetensors manifests retain OpenPI `[out, in]` metadata. Tensor-map manifests preserve `vlacpp.metadata` from safetensors headers when present, so mapped local fixtures infer dimensions without command-line overrides. Metadata-less mapped OpenPI action-head/projector shards infer `action_dim` from action projection tensors, `state_dim` from `state_proj.weight` when available, and visible OpenPI graph dimensions into `vlacpp.openpi.*` metadata keys; projector-only metadata infers `vision_width` from projector input and `language_width` from projector output. `tools/inspect-gguf.py` verifies emitted tensor names/shapes. Real pi0 HF inventory currently maps 10/777 tensors for the action-head subset, while `--family all` can generate a 777/777 identity manifest from the same header. `--family pi0-full` preserves every tensor while aliasing action-head tensors and `multi_modal_projector.linear` to runtime names; on the real ModelScope header this reports 777 tensors, 27 SigLIP vision layers, 18 language layers, and 18 action-expert layers. `--family pi0-action-projector` maps the real ModelScope pi0 action decoder plus PaliGemma projector subset, 12/12 tensors. `--family pi0-vision-projector` isolates the two direct-ggml PaliGemma projector tensors. `--family pi05-full` preserves every tensor while aliasing currently supported head tensors to runtime names. `--family pi0-vision-mtmd` maps OpenPI SigLIP vision tensors into llama.cpp mtmd `v.*` names; the real ModelScope pi0 header maps 437/437 vision tensors. Real pi0.5 HF action-head inventory maps 8/812 tensors. Runtime support remains partial. | Partial |
 | Model forward | `src/models/pi0.cpp` now dispatches between a `Pi0Vlm` prefix/signal path and `Pi0ActionDecoder`; mock/tiny velocity forward, restricted pi0 state/action-head forward, and restricted pi0.5 action/time-head forward remain implemented. The restricted action decoder linear layers execute the action horizon through direct batched `ggml` graph calls. Full SigLIP/PaliGemma/Gemma backbone is not implemented. | Partial |
 | Flow sampling | `src/sampling/flow.cpp` Euler flow sampler is wired into mock, tiny velocity, and action-head paths. | Done for implemented paths |
-| OpenPI comparison | `tools/compare-openpi-reference.py` compares tiny OpenPI-style math; `tools/compare-openpi-policy.py` can call official OpenPI policy API when installed and requires `full-openpi` capability by default; `tests/run_fake_openpi_policy_compare.py` validates both the restricted-model rejection and explicit subset-test override. Real official checkpoint parity has not been executed. | Partial |
+| OpenPI comparison | `tools/compare-openpi-reference.py` compares tiny OpenPI-style math; `tools/compare-openpi-policy.py` can call official OpenPI policy API when installed and requires `full-openpi` capability by default; `tests/run_fake_openpi_policy_compare.py` validates both the restricted-model rejection and explicit subset-test override. An official OpenPI PyTorch smoke now loads the local ModelScope pi0 safetensors through a `model.` prefix adapter and runs `sample_actions(num_steps=1)`, producing `(1, 50, 32)` actions. Full vlacpp-vs-OpenPI parity has not been executed because vlacpp still reports restricted capability. | Partial |
 | llama.cpp/ggml reuse | `third_party/llama.cpp` is now a required submodule gitlink; default CMake configures and links `ggml`, `llama`, and `mtmd` for `vlacpp`; `vlacpp-mtmd-api` verifies direct `mtmd` API availability; the restricted action-head forward path uses direct `ggml` graph calls; GGUF conversion uses llama.cpp `gguf-py`. `tools/check-openpi-llama-reuse.py` passes on the real ModelScope pi0 full manifest and keeps the boundary at mtmd SigLIP/ViT, direct ggml PaliGemma projector, llama.cpp Gemma graph pieces with custom wiring, and custom OpenPI action expert/head graphs. Full OpenPI graph wiring still remains. | Partial |
 
 ## Default Test Coverage
@@ -40,6 +40,9 @@ Expected CTest coverage:
   a fake package, including default rejection of restricted vlacpp models and
   the explicit `--allow-restricted-vlacpp` subset-test override.
 - `vlacpp-official-openpi-compare-skip`: explicit skipped result when official OpenPI is not installed.
+- `vlacpp-official-openpi-pytorch-smoke-skip`: explicit skipped result for the
+  official OpenPI PyTorch checkpoint smoke when official OpenPI is not
+  installed.
 - `vlacpp-openpi-graph-summary`: `summarize-openpi-graph.py` extracts action
   width/dimension and backbone layer counts from a full OpenPI-style manifest,
   including ModelScope-style `model.` prefixes.
@@ -177,6 +180,36 @@ This performs:
 
 The smoke intentionally converts only the action-head tensor subset; it does not
 claim full model parity.
+
+## Manual Official OpenPI PyTorch Smoke
+
+After installing official OpenPI, this verifies that the local ModelScope pi0
+checkpoint can be loaded into the official PyTorch model and can run sampling:
+
+```sh
+cd /tmp/openpi-src
+GIT_LFS_SKIP_SMUDGE=1 uv sync
+cp -r ./src/openpi/models_pytorch/transformers_replace/* .venv/lib/python3.11/site-packages/transformers/
+CUDA_VISIBLE_DEVICES=7 .venv/bin/python \
+  /home/huangjie/projects/vlacpp/tools/run-openpi-pytorch-smoke.py \
+  --checkpoint /home/huangjie/projects/vlacpp/ckpts/lerobot-pi0/model.safetensors \
+  --openpi-config pi0_aloha \
+  --num-steps 1
+```
+
+Latest verified output:
+
+- `loaded_tensors=777`; skipped tensors are generated OpenPI buffers:
+  `vision_tower.vision_model.embeddings.position_ids`,
+  `language_model.rotary_emb.inv_freq`, and
+  `gemma_expert.model.rotary_emb.inv_freq`.
+- `actions_shape=[1, 50, 32]`, `actions_sum=-1.1483268737792969`,
+  first action values
+  `[-0.10799, -0.059272, 0.019121, -0.14924, -0.065275, 0.171053, -0.062303, -0.207521]`.
+
+The ModelScope file is structurally compatible with official OpenPI after
+stripping its top-level `model.` prefix. This is a reference smoke only; it does
+not claim vlacpp parity until a `full-openpi` GGUF runtime path exists.
 
 Latest verified smoke outputs:
 

@@ -271,6 +271,14 @@ if(VLACPP_BUILD_TESTS)
                 --allow-missing-openpi
         )
         add_test(
+            NAME vlacpp-official-openpi-pytorch-smoke-skip
+            COMMAND
+                ${Python3_EXECUTABLE}
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/run-openpi-pytorch-smoke.py"
+                --checkpoint "/tmp/not-used.safetensors"
+                --allow-missing-openpi
+        )
+        add_test(
             NAME vlacpp-download-lock
             COMMAND
                 ${Python3_EXECUTABLE}
