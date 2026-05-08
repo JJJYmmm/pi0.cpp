@@ -93,6 +93,8 @@ if(VLACPP_BUILD_TESTS)
         set(VLACPP_PI05_F16_SAFETENSORS "${CMAKE_CURRENT_BINARY_DIR}/pi05-action-head-f16.safetensors")
         set(VLACPP_PI05_F16_GGUF "${CMAKE_CURRENT_BINARY_DIR}/pi05-action-head-f16.gguf")
         set(VLACPP_OPENPI_GRAPH_MANIFEST "${CMAKE_CURRENT_SOURCE_DIR}/tests/openpi-graph-manifest.json")
+        set(VLACPP_OPENPI_GRAPH_CHECKPOINT "${CMAKE_CURRENT_SOURCE_DIR}/tests/openpi-graph-checkpoint.json")
+        set(VLACPP_OPENPI_GRAPH_DEFAULT_METADATA "${CMAKE_CURRENT_BINARY_DIR}/openpi-graph-default-metadata.json")
         set(VLACPP_OPENPI_GRAPH_PI0_FULL_MANIFEST "${CMAKE_CURRENT_BINARY_DIR}/openpi-graph-pi0-full-map.json")
         set(VLACPP_PI0_VISION_MTMD_MANIFEST "${CMAKE_CURRENT_BINARY_DIR}/pi0-vision-mtmd-map.json")
         set(VLACPP_PI0_VISION_PROJECTOR_MANIFEST "${CMAKE_CURRENT_BINARY_DIR}/pi0-vision-projector-map.json")
@@ -108,6 +110,26 @@ if(VLACPP_BUILD_TESTS)
                 --expect-language-layers 2
                 --expect-action-expert-layers 2
         )
+        add_test(
+            NAME vlacpp-openpi-graph-default-metadata-convert
+            COMMAND
+                ${Python3_EXECUTABLE}
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/convert-openpi-to-gguf.py"
+                --checkpoint "${VLACPP_OPENPI_GRAPH_CHECKPOINT}"
+                --output "${VLACPP_OPENPI_GRAPH_DEFAULT_METADATA}"
+                --output-format json
+        )
+        add_test(
+            NAME vlacpp-openpi-graph-default-metadata-check
+            COMMAND
+                ${Python3_EXECUTABLE}
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/check_json_checkpoint_metadata.py"
+                "${VLACPP_OPENPI_GRAPH_DEFAULT_METADATA}"
+                --expect "action_horizon=50"
+                --expect "action_dim=32"
+                --expect "openpi_action_expert_layers=1"
+        )
+        set_tests_properties(vlacpp-openpi-graph-default-metadata-check PROPERTIES DEPENDS vlacpp-openpi-graph-default-metadata-convert)
         add_test(
             NAME vlacpp-llama-components
             COMMAND

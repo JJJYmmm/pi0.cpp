@@ -444,13 +444,17 @@ def build_metadata(args: argparse.Namespace, checkpoint: dict[str, Any]) -> dict
     source = {**checkpoint, **inferred, **metadata}
     state_dim = int(source.get("state_dim", args.state_dim))
     action_dim = int(source.get("action_dim", args.action_dim))
+    default_action_horizon = 50 if "openpi_action_expert_layers" in inferred else 32
+    action_horizon = source.get("action_horizon", args.action_horizon)
+    if action_horizon is None:
+        action_horizon = default_action_horizon
     result = {
         "model_type": source.get("model_type", args.model_type),
         "image_width": int(source.get("image_width", args.image_width)),
         "image_height": int(source.get("image_height", args.image_height)),
         "state_dim": state_dim,
         "action_dim": action_dim,
-        "action_horizon": int(source.get("action_horizon", args.action_horizon)),
+        "action_horizon": int(action_horizon),
         "max_token_len": int(source.get("max_token_len", args.max_token_len)),
         "image_keys": source.get("image_keys", args.image_key),
         "state_mean": source.get("state_mean", [0.0] * state_dim),
@@ -602,7 +606,7 @@ def main() -> None:
     parser.add_argument("--image-height", type=int, default=224)
     parser.add_argument("--state-dim", type=int, default=32)
     parser.add_argument("--action-dim", type=int, default=32)
-    parser.add_argument("--action-horizon", type=int, default=32)
+    parser.add_argument("--action-horizon", type=int)
     parser.add_argument("--max-token-len", type=int, default=250)
     parser.add_argument("--image-key", action="append", default=["base_0_rgb"])
     args = parser.parse_args()
