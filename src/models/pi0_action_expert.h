@@ -32,6 +32,16 @@ public:
         int kv_heads,
         int head_dim,
         std::vector<float> & out) const;
+    void self_attention_masked_batch(
+        const std::vector<float> & q,
+        const std::vector<float> & k,
+        const std::vector<float> & v,
+        const std::vector<float> & attention_mask,
+        int tokens,
+        int heads,
+        int kv_heads,
+        int head_dim,
+        std::vector<float> & out) const;
     void rope_batch(
         const std::vector<float> & values,
         const std::vector<int> & positions,
@@ -45,6 +55,16 @@ public:
         int layer,
         const std::vector<float> & tokens,
         const std::vector<int> & positions,
+        int batch,
+        int heads,
+        int kv_heads,
+        int head_dim,
+        std::vector<float> & out) const;
+    void block_masked_batch(
+        int layer,
+        const std::vector<float> & tokens,
+        const std::vector<int> & positions,
+        const std::vector<float> & attention_mask,
         int batch,
         int heads,
         int kv_heads,

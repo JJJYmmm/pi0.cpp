@@ -222,6 +222,19 @@ void Pi0ActionExpert::self_attention_batch(
     int kv_heads,
     int head_dim,
     std::vector<float> & out) const {
+    self_attention_masked_batch(q, k, v, {}, tokens, heads, kv_heads, head_dim, out);
+}
+
+void Pi0ActionExpert::self_attention_masked_batch(
+    const std::vector<float> & q,
+    const std::vector<float> & k,
+    const std::vector<float> & v,
+    const std::vector<float> & attention_mask,
+    int tokens,
+    int heads,
+    int kv_heads,
+    int head_dim,
+    std::vector<float> & out) const {
     if (tokens <= 0 || heads <= 0 || kv_heads <= 0 || head_dim <= 0 || heads % kv_heads != 0) {
         throw std::invalid_argument("invalid pi0 action expert attention dimensions");
     }
@@ -232,8 +245,11 @@ void Pi0ActionExpert::self_attention_batch(
     if (q.size() != q_size || k.size() != kv_size || v.size() != kv_size) {
         throw std::invalid_argument("action expert attention inputs must have matching Q/K/V shape");
     }
+    if (!attention_mask.empty() && attention_mask.size() != static_cast<size_t>(tokens) * static_cast<size_t>(tokens)) {
+        throw std::invalid_argument("action expert attention mask has incompatible shape");
+    }
 
-    const size_t tensor_bytes = (q_size * 2 + kv_size * 2) * sizeof(float);
+    const size_t tensor_bytes = (q_size * 2 + kv_size * 2 + attention_mask.size()) * sizeof(float);
     const size_t context_size = std::max<size_t>(64 * 1024 * 1024, tensor_bytes * 8 + 1024 * 1024);
     ggml_init_params params{};
     params.mem_size = context_size;
@@ -247,9 +263,14 @@ void Pi0ActionExpert::self_attention_batch(
     ggml_tensor * q_cur = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, head_dim, heads, tokens);
     ggml_tensor * k_cur = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, head_dim, kv_heads, tokens);
     ggml_tensor * v_cur = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, head_dim, kv_heads, tokens);
+    ggml_tensor * kq_mask = nullptr;
     std::memcpy(ggml_get_data_f32(q_cur), q.data(), q.size() * sizeof(float));
     std::memcpy(ggml_get_data_f32(k_cur), k.data(), k.size() * sizeof(float));
     std::memcpy(ggml_get_data_f32(v_cur), v.data(), v.size() * sizeof(float));
+    if (!attention_mask.empty()) {
+        kq_mask = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, tokens, tokens, 1);
+        std::memcpy(ggml_get_data_f32(kq_mask), attention_mask.data(), attention_mask.size() * sizeof(float));
+    }
     if (kv_heads != heads) {
         k_cur = ggml_repeat(ctx, k_cur, q_cur);
         v_cur = ggml_repeat(ctx, v_cur, q_cur);
@@ -260,7 +281,7 @@ void Pi0ActionExpert::self_attention_batch(
     ggml_tensor * v_perm = ggml_cont(ctx, ggml_permute(ctx, v_cur, 1, 2, 0, 3));
     const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim));
     ggml_tensor * scores = ggml_mul_mat(ctx, k_perm, q_perm);
-    scores = ggml_soft_max_ext(ctx, scores, nullptr, scale, 0.0f);
+    scores = ggml_soft_max_ext(ctx, scores, kq_mask, scale, 0.0f);
     ggml_tensor * values = ggml_mul_mat(ctx, v_perm, scores);
     ggml_tensor * y = ggml_permute(ctx, values, 0, 2, 1, 3);
     y = ggml_cont_2d(ctx, y, static_cast<int64_t>(head_dim) * heads, tokens);
@@ -472,6 +493,19 @@ void Pi0ActionExpert::block_batch(
     int kv_heads,
     int head_dim,
     std::vector<float> & out) const {
+    block_masked_batch(layer, tokens, positions, {}, batch, heads, kv_heads, head_dim, out);
+}
+
+void Pi0ActionExpert::block_masked_batch(
+    int layer,
+    const std::vector<float> & tokens,
+    const std::vector<int> & positions,
+    const std::vector<float> & attention_mask,
+    int batch,
+    int heads,
+    int kv_heads,
+    int head_dim,
+    std::vector<float> & out) const {
     const size_t width = static_cast<size_t>(config_.openpi_action_expert_width);
     if (batch <= 0 || width == 0 || tokens.size() != static_cast<size_t>(batch) * width) {
         throw std::invalid_argument("action expert block input has incompatible shape");
@@ -491,7 +525,7 @@ void Pi0ActionExpert::block_batch(
     rope_batch(k, positions, batch, kv_heads, head_dim, k_rot);
 
     std::vector<float> attn_values;
-    self_attention_batch(q_rot, k_rot, v, batch, heads, kv_heads, head_dim, attn_values);
+    self_attention_masked_batch(q_rot, k_rot, v, attention_mask, batch, heads, kv_heads, head_dim, attn_values);
 
     std::vector<float> attn_out;
     attention_out_batch(layer, attn_values, batch, attn_out);

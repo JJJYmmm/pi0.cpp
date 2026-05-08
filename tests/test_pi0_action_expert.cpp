@@ -99,6 +99,7 @@ std::vector<float> self_attention(
     const std::vector<float> & q,
     const std::vector<float> & k,
     const std::vector<float> & v,
+    const std::vector<float> & mask,
     int tokens,
     int heads,
     int kv_heads,
@@ -124,7 +125,8 @@ std::vector<float> self_attention(
                         static_cast<size_t>(dim);
                     score += q[q_index] * k[k_index];
                 }
-                scores[static_cast<size_t>(tk)] = score * scale;
+                scores[static_cast<size_t>(tk)] =
+                    score * scale + (mask.empty() ? 0.0f : mask[static_cast<size_t>(tq) * tokens + tk]);
                 max_score = std::max(max_score, scores[static_cast<size_t>(tk)]);
             }
             float denom = 0.0f;
@@ -150,6 +152,17 @@ std::vector<float> self_attention(
         }
     }
     return result;
+}
+
+std::vector<float> self_attention(
+    const std::vector<float> & q,
+    const std::vector<float> & k,
+    const std::vector<float> & v,
+    int tokens,
+    int heads,
+    int kv_heads,
+    int head_dim) {
+    return self_attention(q, k, v, {}, tokens, heads, kv_heads, head_dim);
 }
 
 std::vector<float> rope_neox(
@@ -277,6 +290,15 @@ int main() {
     std::vector<float> attention_core;
     expert.self_attention_batch(attention_q, attention_k, attention_v, 3, 2, 2, 2, attention_core);
     require_close(attention_core, self_attention(attention_q, attention_k, attention_v, 3, 2, 2, 2));
+    const std::vector<float> attention_mask = {
+        0.0f, -INFINITY, -INFINITY,
+        0.0f, 0.0f, 0.0f,
+        0.0f, 0.0f, 0.0f,
+    };
+    expert.self_attention_masked_batch(attention_q, attention_k, attention_v, attention_mask, 3, 2, 2, 2, attention_core);
+    require_close(
+        attention_core,
+        self_attention(attention_q, attention_k, attention_v, attention_mask, 3, 2, 2, 2));
 
     std::vector<float> rope_actual;
     const std::vector<int> positions = {0, 1, 3};
@@ -356,7 +378,8 @@ int main() {
     vlacpp::Pi0ActionDecoder decoder(config, backend, tensors);
     std::vector<float> velocity;
     const std::vector<float> actions = {0.2f, -0.1f};
-    decoder.velocity_batch(0.25f, actions, {}, velocity);
+    const std::vector<float> state_context = {0.12f, -0.05f};
+    decoder.velocity_batch(0.25f, actions, state_context, velocity);
 
     std::vector<float> action_tokens =
         linear_add(tensors["vlacpp.openpi.action_in_proj.weight"].data,
@@ -391,11 +414,18 @@ int main() {
                    2,
                    2,
                    2);
+    decoder_suffix.insert(decoder_suffix.begin(), state_context.begin(), state_context.end());
     std::vector<float> decoder_block;
-    const std::vector<int> decoder_positions = {0, 1};
-    expert.block_batch(0, decoder_suffix, decoder_positions, 2, 2, 1, 2, decoder_block);
+    const std::vector<int> decoder_positions = {0, 1, 2};
+    const std::vector<float> decoder_mask = {
+        0.0f, -INFINITY, -INFINITY,
+        0.0f, 0.0f, 0.0f,
+        0.0f, 0.0f, 0.0f,
+    };
+    expert.block_masked_batch(0, decoder_suffix, decoder_positions, decoder_mask, 3, 2, 1, 2, decoder_block);
     std::vector<float> decoder_norm =
-        rms_norm(tensors["model.paligemma_with_expert.gemma_expert.model.norm.weight"].data, decoder_block, 2, 2);
+        rms_norm(tensors["model.paligemma_with_expert.gemma_expert.model.norm.weight"].data, decoder_block, 3, 2);
+    decoder_norm.erase(decoder_norm.begin(), decoder_norm.begin() + 2);
     std::vector<float> decoder_expected =
         linear_add(tensors["vlacpp.openpi.action_out_proj.weight"].data,
                    tensors["vlacpp.openpi.action_out_proj.bias"].data,

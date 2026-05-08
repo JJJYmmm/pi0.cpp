@@ -188,13 +188,21 @@ void Pi0ActionDecoder::velocity_batch(
         for (size_t i = 0; i < positions.size(); ++i) {
             positions[i] = static_cast<int>(i);
         }
+        std::vector<float> attention_mask;
+        if (!state_context.empty()) {
+            attention_mask.assign(suffix_count * suffix_count, 0.0f);
+            for (size_t key = 1; key < suffix_count; ++key) {
+                attention_mask[key] = -INFINITY;
+            }
+        }
         std::vector<float> hidden = suffix_tokens;
         for (int layer = 0; layer < config_.openpi_action_expert_layers; ++layer) {
             std::vector<float> next;
-            action_expert_.block_batch(
+            action_expert_.block_masked_batch(
                 layer,
                 hidden,
                 positions,
+                attention_mask,
                 static_cast<int>(suffix_count),
                 heads,
                 kv_heads,
