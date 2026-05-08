@@ -23,5 +23,16 @@ int main() {
         std::cerr << "unexpected ggml linear result: " << output[0] << ", " << output[1] << "\n";
         return 1;
     }
+
+    const std::vector<float> batch_input = {10.0f, 20.0f, 30.0f, 1.0f, 2.0f, 3.0f};
+    vlacpp::ggml_linear_batch(weight, bias, batch_input, 2, output, 1);
+    if (output.size() != 4 ||
+        std::fabs(output[0] - 140.5f) > 1.0e-5f ||
+        std::fabs(output[1] - 319.0f) > 1.0e-5f ||
+        std::fabs(output[2] - 14.5f) > 1.0e-5f ||
+        std::fabs(output[3] - 31.0f) > 1.0e-5f) {
+        std::cerr << "unexpected ggml batch linear result\n";
+        return 1;
+    }
     return 0;
 }

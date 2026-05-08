@@ -121,21 +121,13 @@ public:
             config_.action_dim,
             [&](float time, const std::vector<float> & x, std::vector<float> & v) {
                 if (has_action_head || has_pi05_action_head) {
-                    std::vector<float> action(static_cast<size_t>(config_.action_dim), 0.0f);
                     std::vector<float> action_velocity;
-                    for (int row = 0; row < config_.action_horizon; ++row) {
-                        const size_t offset = static_cast<size_t>(row) * static_cast<size_t>(config_.action_dim);
-                        std::copy(
-                            x.begin() + static_cast<std::ptrdiff_t>(offset),
-                            x.begin() + static_cast<std::ptrdiff_t>(offset + static_cast<size_t>(config_.action_dim)),
-                            action.begin());
-                        if (has_pi05_action_head) {
-                            pi05_action_head_velocity(time, action, action_velocity);
-                        } else {
-                            action_head_velocity(time, action, state_context, action_velocity);
-                        }
-                        std::copy(action_velocity.begin(), action_velocity.end(), v.begin() + static_cast<std::ptrdiff_t>(offset));
+                    if (has_pi05_action_head) {
+                        pi05_action_head_velocity_batch(time, x, action_velocity);
+                    } else {
+                        action_head_velocity_batch(time, x, state_context, action_velocity);
                     }
+                    std::copy(action_velocity.begin(), action_velocity.end(), v.begin());
                     return;
                 }
                 for (size_t i = 0; i < x.size(); ++i) {
@@ -247,6 +239,61 @@ private:
         ggml_linear(out_w, out_b, mixed, out, backend_.n_threads);
     }
 
+    void action_head_velocity_batch(
+        float time,
+        const std::vector<float> & actions,
+        const std::vector<float> & state_context,
+        std::vector<float> & out) const {
+        const Tensor & in_w = *find_tensor("vlacpp.openpi.action_in_proj.weight");
+        const Tensor & in_b = *find_tensor("vlacpp.openpi.action_in_proj.bias");
+        const Tensor & time_in_w = *find_tensor("vlacpp.openpi.action_time_mlp_in.weight");
+        const Tensor & time_in_b = *find_tensor("vlacpp.openpi.action_time_mlp_in.bias");
+        const Tensor & time_out_w = *find_tensor("vlacpp.openpi.action_time_mlp_out.weight");
+        const Tensor & time_out_b = *find_tensor("vlacpp.openpi.action_time_mlp_out.bias");
+        const Tensor & out_w = *find_tensor("vlacpp.openpi.action_out_proj.weight");
+        const Tensor & out_b = *find_tensor("vlacpp.openpi.action_out_proj.bias");
+
+        const int batch = config_.action_horizon;
+        const size_t width = static_cast<size_t>(in_w.shape[0]);
+        std::vector<float> action_tokens;
+        ggml_linear_batch(in_w, in_b, actions, batch, action_tokens, backend_.n_threads);
+        if (!state_context.empty()) {
+            for (int row = 0; row < batch; ++row) {
+                const size_t offset = static_cast<size_t>(row) * width;
+                for (size_t i = 0; i < width; ++i) {
+                    action_tokens[offset + i] += state_context[i];
+                }
+            }
+        }
+
+        const std::vector<float> time_emb = posemb_sincos(time, width);
+        std::vector<float> action_time(static_cast<size_t>(batch) * width * 2, 0.0f);
+        for (int row = 0; row < batch; ++row) {
+            const size_t src = static_cast<size_t>(row) * width;
+            const size_t dst = static_cast<size_t>(row) * width * 2;
+            std::copy(
+                action_tokens.begin() + static_cast<std::ptrdiff_t>(src),
+                action_tokens.begin() + static_cast<std::ptrdiff_t>(src + width),
+                action_time.begin() + static_cast<std::ptrdiff_t>(dst));
+            std::copy(
+                time_emb.begin(),
+                time_emb.end(),
+                action_time.begin() + static_cast<std::ptrdiff_t>(dst + width));
+        }
+
+        std::vector<float> hidden;
+        ggml_linear_batch(time_in_w, time_in_b, action_time, batch, hidden, backend_.n_threads);
+        for (float & value : hidden) {
+            value = swish(value);
+        }
+        std::vector<float> mixed;
+        ggml_linear_batch(time_out_w, time_out_b, hidden, batch, mixed, backend_.n_threads);
+        for (float & value : mixed) {
+            value = swish(value);
+        }
+        ggml_linear_batch(out_w, out_b, mixed, batch, out, backend_.n_threads);
+    }
+
     void pi05_action_head_velocity(float time, const std::vector<float> & action, std::vector<float> & out) const {
         const Tensor & in_w = *find_tensor("vlacpp.openpi.action_in_proj.weight");
         const Tensor & in_b = *find_tensor("vlacpp.openpi.action_in_proj.bias");
@@ -274,6 +321,40 @@ private:
             action_token[i] += time_context[i];
         }
         ggml_linear(out_w, out_b, action_token, out, backend_.n_threads);
+    }
+
+    void pi05_action_head_velocity_batch(float time, const std::vector<float> & actions, std::vector<float> & out) const {
+        const Tensor & in_w = *find_tensor("vlacpp.openpi.action_in_proj.weight");
+        const Tensor & in_b = *find_tensor("vlacpp.openpi.action_in_proj.bias");
+        const Tensor & time_in_w = *find_tensor("vlacpp.openpi.pi05.time_mlp_in.weight");
+        const Tensor & time_in_b = *find_tensor("vlacpp.openpi.pi05.time_mlp_in.bias");
+        const Tensor & time_out_w = *find_tensor("vlacpp.openpi.pi05.time_mlp_out.weight");
+        const Tensor & time_out_b = *find_tensor("vlacpp.openpi.pi05.time_mlp_out.bias");
+        const Tensor & out_w = *find_tensor("vlacpp.openpi.action_out_proj.weight");
+        const Tensor & out_b = *find_tensor("vlacpp.openpi.action_out_proj.bias");
+
+        const int batch = config_.action_horizon;
+        const size_t width = static_cast<size_t>(in_w.shape[0]);
+        std::vector<float> action_tokens;
+        ggml_linear_batch(in_w, in_b, actions, batch, action_tokens, backend_.n_threads);
+        std::vector<float> time_emb = posemb_sincos(time, width);
+        std::vector<float> hidden;
+        ggml_linear(time_in_w, time_in_b, time_emb, hidden, backend_.n_threads);
+        for (float & value : hidden) {
+            value = swish(value);
+        }
+        std::vector<float> time_context;
+        ggml_linear(time_out_w, time_out_b, hidden, time_context, backend_.n_threads);
+        for (float & value : time_context) {
+            value = swish(value);
+        }
+        for (int row = 0; row < batch; ++row) {
+            const size_t offset = static_cast<size_t>(row) * width;
+            for (size_t i = 0; i < width; ++i) {
+                action_tokens[offset + i] += time_context[i];
+            }
+        }
+        ggml_linear_batch(out_w, out_b, action_tokens, batch, out, backend_.n_threads);
     }
 
     ModelConfig config_;
