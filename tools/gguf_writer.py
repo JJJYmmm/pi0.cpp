@@ -47,3 +47,15 @@ def write_gguf(path: Path, metadata: dict[str, Any], tensors: dict[str, dict[str
     writer.write_kv_data_to_file()
     writer.write_tensors_to_file()
     writer.close()
+
+
+def write_gguf_arrays(path: Path, metadata: dict[str, Any], tensors: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    writer = gguf.GGUFWriter(path, arch=str(metadata.get("general.architecture", "vlacpp")), use_temp_file=True)
+    add_metadata(writer, metadata)
+    for name, shape, array in tensors:
+        writer.add_tensor(name, np.asarray(array, dtype=np.float32), raw_shape=[int(dim) for dim in shape])
+    writer.write_header_to_file()
+    writer.write_kv_data_to_file()
+    writer.write_tensors_to_file()
+    writer.close()

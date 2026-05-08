@@ -18,7 +18,7 @@ from typing import Any
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
-from gguf_writer import write_gguf
+from gguf_writer import write_gguf, write_gguf_arrays
 
 
 REQUIRED_TENSORS = {"pi0.velocity.weight", "pi0.velocity.time_weight"}
@@ -226,6 +226,28 @@ def tensor_payload_to_float32(dtype: str, raw: bytes) -> list[float]:
     raise RuntimeError("unreachable")
 
 
+def tensor_payload_to_float32_array(dtype: str, raw: bytes):
+    try:
+        import numpy as np
+    except ImportError as exc:
+        raise SystemExit("mapped safetensors conversion requires numpy") from exc
+    if dtype == "F32":
+        if len(raw) % 4 != 0:
+            raise SystemExit("F32 tensor payload byte count is not divisible by 4")
+        return np.frombuffer(raw, dtype="<f4")
+    if dtype == "F16":
+        if len(raw) % 2 != 0:
+            raise SystemExit("F16 tensor payload byte count is not divisible by 2")
+        return np.frombuffer(raw, dtype="<f2").astype("float32")
+    if dtype == "BF16":
+        if len(raw) % 2 != 0:
+            raise SystemExit("BF16 tensor payload byte count is not divisible by 2")
+        bits = np.frombuffer(raw, dtype="<u2").astype(np.uint32) << 16
+        return bits.view("<f4")
+    dtype_nbytes(dtype)
+    raise RuntimeError("unreachable")
+
+
 def load_remote_safetensors(spec: str) -> dict[str, Any]:
     url = resolve_repo_file_url(spec) if spec.startswith("hf://") or spec.startswith("ms://") else spec
     header_len = struct.unpack("<Q", read_remote_range(url, 0, 7))[0]
@@ -291,6 +313,42 @@ def load_tensor_map_manifest(manifest_path: Path) -> dict[str, Any]:
             "data": tensor_payload_to_float32(tensor["dtype"], raw),
         }
     return {"metadata": manifest.get("metadata", {}), "tensors": tensors}
+
+
+def load_tensor_map_manifest_shapes(manifest_path: Path) -> dict[str, Any]:
+    manifest = load_json(manifest_path)
+    tensors: dict[str, dict[str, Any]] = {}
+    for tensor in manifest["tensors"]:
+        tensors[tensor["target"]] = {
+            "shape": tensor["shape"],
+            "data": [],
+        }
+    return {"metadata": manifest.get("metadata", {}), "tensors": tensors}
+
+
+def manifest_range_reader(manifest_path: Path, source: str):
+    if (
+        source.startswith("hf://") or
+        source.startswith("ms://") or
+        source.startswith("https://") or
+        source.startswith("http://")
+    ):
+        url = resolve_repo_file_url(source) if source.startswith("hf://") or source.startswith("ms://") else source
+        return lambda begin, end: read_remote_range(url, begin, end)
+    source_path = resolve_manifest_source(manifest_path, source)
+    return lambda begin, end: read_local_range(source_path, begin, end)
+
+
+def iter_tensor_map_manifest_arrays(manifest_path: Path):
+    manifest = load_json(manifest_path)
+    read_range = manifest_range_reader(manifest_path, manifest["source"])
+    header_len = struct.unpack("<Q", read_range(0, 7))[0]
+    data_begin = 8 + header_len
+    for tensor in manifest["tensors"]:
+        begin, end = tensor["data_offsets"]
+        raw = read_range(data_begin + begin, data_begin + end - 1)
+        validate_tensor_payload(tensor["target"], tensor["dtype"], tensor["shape"], raw)
+        yield tensor["target"], tensor["shape"], tensor_payload_to_float32_array(tensor["dtype"], raw)
 
 
 def load_checkpoint(path: Path | None) -> dict[str, Any]:
@@ -615,7 +673,11 @@ def main() -> None:
     parser.add_argument("--image-key", action="append", default=["base_0_rgb"])
     args = parser.parse_args()
 
-    checkpoint = load_tensor_map_manifest(args.tensor_map_manifest) if args.tensor_map_manifest is not None else load_checkpoint_arg(args.checkpoint)
+    checkpoint = (
+        load_tensor_map_manifest_shapes(args.tensor_map_manifest)
+        if args.tensor_map_manifest is not None else
+        load_checkpoint_arg(args.checkpoint)
+    )
     config = load_json_arg(args.config)
     if config:
         checkpoint = {**checkpoint, "metadata": {**config, **checkpoint.get("metadata", {})}}
@@ -632,8 +694,13 @@ def main() -> None:
         args.output.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
         return
 
+    gguf_meta = gguf_metadata(metadata)
+    if args.tensor_map_manifest is not None:
+        write_gguf_arrays(args.output, gguf_meta, iter_tensor_map_manifest_arrays(args.tensor_map_manifest))
+        return
+
     tensors = build_tensors(metadata, checkpoint, args.init_tiny, args.tensor_map_manifest)
-    write_gguf(args.output, gguf_metadata(metadata), tensors)
+    write_gguf(args.output, gguf_meta, tensors)
 
 
 if __name__ == "__main__":
