@@ -57,6 +57,60 @@ std::vector<float> rms_norm(
     return result;
 }
 
+std::vector<float> self_attention(
+    const std::vector<float> & q,
+    const std::vector<float> & k,
+    const std::vector<float> & v,
+    int tokens,
+    int heads,
+    int head_dim) {
+    std::vector<float> result(q.size(), 0.0f);
+    const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim));
+    for (int head = 0; head < heads; ++head) {
+        for (int tq = 0; tq < tokens; ++tq) {
+            std::vector<float> scores(static_cast<size_t>(tokens), 0.0f);
+            float max_score = -INFINITY;
+            for (int tk = 0; tk < tokens; ++tk) {
+                float score = 0.0f;
+                for (int dim = 0; dim < head_dim; ++dim) {
+                    const size_t q_index =
+                        (static_cast<size_t>(tq) * static_cast<size_t>(heads) + static_cast<size_t>(head)) *
+                            static_cast<size_t>(head_dim) +
+                        static_cast<size_t>(dim);
+                    const size_t k_index =
+                        (static_cast<size_t>(tk) * static_cast<size_t>(heads) + static_cast<size_t>(head)) *
+                            static_cast<size_t>(head_dim) +
+                        static_cast<size_t>(dim);
+                    score += q[q_index] * k[k_index];
+                }
+                scores[static_cast<size_t>(tk)] = score * scale;
+                max_score = std::max(max_score, scores[static_cast<size_t>(tk)]);
+            }
+            float denom = 0.0f;
+            for (float & score : scores) {
+                score = std::exp(score - max_score);
+                denom += score;
+            }
+            for (int dim = 0; dim < head_dim; ++dim) {
+                float value = 0.0f;
+                for (int tk = 0; tk < tokens; ++tk) {
+                    const size_t v_index =
+                        (static_cast<size_t>(tk) * static_cast<size_t>(heads) + static_cast<size_t>(head)) *
+                            static_cast<size_t>(head_dim) +
+                        static_cast<size_t>(dim);
+                    value += scores[static_cast<size_t>(tk)] / denom * v[v_index];
+                }
+                const size_t out_index =
+                    (static_cast<size_t>(tq) * static_cast<size_t>(heads) + static_cast<size_t>(head)) *
+                        static_cast<size_t>(head_dim) +
+                    static_cast<size_t>(dim);
+                result[out_index] = value;
+            }
+        }
+    }
+    return result;
+}
+
 void require_close(const std::vector<float> & actual, const std::vector<float> & expected) {
     if (actual.size() != expected.size()) {
         std::cerr << "size mismatch\n";
@@ -128,6 +182,25 @@ int main() {
     require_close(q, linear(tensors[layer_prefix + "self_attn.q_proj.weight"].data, input, 2, 2, 4));
     require_close(k, linear(tensors[layer_prefix + "self_attn.k_proj.weight"].data, input, 2, 2, 2));
     require_close(v, linear(tensors[layer_prefix + "self_attn.v_proj.weight"].data, input, 2, 2, 2));
+
+    const std::vector<float> attention_q = {
+        0.2f, -0.1f, 0.5f, 0.3f,
+        -0.4f, 0.6f, 0.1f, -0.2f,
+        0.7f, 0.0f, -0.3f, 0.4f,
+    };
+    const std::vector<float> attention_k = {
+        -0.2f, 0.4f, 0.3f, -0.5f,
+        0.6f, -0.1f, 0.2f, 0.7f,
+        -0.3f, 0.8f, -0.4f, 0.1f,
+    };
+    const std::vector<float> attention_v = {
+        0.9f, -0.6f, 0.2f, 0.0f,
+        -0.5f, 0.3f, 0.8f, -0.7f,
+        0.1f, 0.4f, -0.2f, 0.5f,
+    };
+    std::vector<float> attention_core;
+    expert.self_attention_batch(attention_q, attention_k, attention_v, 3, 2, 2, attention_core);
+    require_close(attention_core, self_attention(attention_q, attention_k, attention_v, 3, 2, 2));
 
     std::vector<float> attention_out;
     const std::vector<float> attention_values = {0.25f, -0.5f, 0.75f, 1.0f, -1.0f, 0.5f, 0.0f, 0.2f};

@@ -22,6 +22,14 @@ public:
         std::vector<float> & q,
         std::vector<float> & k,
         std::vector<float> & v) const;
+    void self_attention_batch(
+        const std::vector<float> & q,
+        const std::vector<float> & k,
+        const std::vector<float> & v,
+        int tokens,
+        int heads,
+        int head_dim,
+        std::vector<float> & out) const;
     void attention_out_batch(int layer, const std::vector<float> & values, int batch, std::vector<float> & out) const;
     void mlp_batch(int layer, const std::vector<float> & tokens, int batch, std::vector<float> & out) const;
 

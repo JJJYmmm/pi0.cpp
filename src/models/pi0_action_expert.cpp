@@ -4,6 +4,7 @@
 #include "ggml.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <stdexcept>
 
@@ -190,6 +191,65 @@ void Pi0ActionExpert::qkv_batch(
     v.assign(
         ggml_get_data_f32(v_out_tensor),
         ggml_get_data_f32(v_out_tensor) + static_cast<size_t>(batch) * static_cast<size_t>(kv_out));
+    ggml_free(ctx);
+}
+
+void Pi0ActionExpert::self_attention_batch(
+    const std::vector<float> & q,
+    const std::vector<float> & k,
+    const std::vector<float> & v,
+    int tokens,
+    int heads,
+    int head_dim,
+    std::vector<float> & out) const {
+    if (tokens <= 0 || heads <= 0 || head_dim <= 0) {
+        throw std::invalid_argument("invalid pi0 action expert attention dimensions");
+    }
+    const size_t qkv_size =
+        static_cast<size_t>(tokens) * static_cast<size_t>(heads) * static_cast<size_t>(head_dim);
+    if (q.size() != qkv_size || k.size() != qkv_size || v.size() != qkv_size) {
+        throw std::invalid_argument("action expert attention inputs must have matching Q/K/V shape");
+    }
+
+    const size_t tensor_bytes = qkv_size * 4 * sizeof(float);
+    const size_t context_size = std::max<size_t>(64 * 1024 * 1024, tensor_bytes * 8 + 1024 * 1024);
+    ggml_init_params params{};
+    params.mem_size = context_size;
+    params.mem_buffer = nullptr;
+    params.no_alloc = false;
+    ggml_context * ctx = ggml_init(params);
+    if (ctx == nullptr) {
+        throw std::runtime_error("failed to initialize ggml context");
+    }
+
+    ggml_tensor * q_cur = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, head_dim, heads, tokens);
+    ggml_tensor * k_cur = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, head_dim, heads, tokens);
+    ggml_tensor * v_cur = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, head_dim, heads, tokens);
+    std::memcpy(ggml_get_data_f32(q_cur), q.data(), q.size() * sizeof(float));
+    std::memcpy(ggml_get_data_f32(k_cur), k.data(), k.size() * sizeof(float));
+    std::memcpy(ggml_get_data_f32(v_cur), v.data(), v.size() * sizeof(float));
+
+    ggml_tensor * q_perm = ggml_permute(ctx, q_cur, 0, 2, 1, 3);
+    ggml_tensor * k_perm = ggml_permute(ctx, k_cur, 0, 2, 1, 3);
+    ggml_tensor * v_perm = ggml_cont(ctx, ggml_permute(ctx, v_cur, 1, 2, 0, 3));
+    const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim));
+    ggml_tensor * scores = ggml_mul_mat(ctx, k_perm, q_perm);
+    scores = ggml_soft_max_ext(ctx, scores, nullptr, scale, 0.0f);
+    ggml_tensor * values = ggml_mul_mat(ctx, v_perm, scores);
+    ggml_tensor * y = ggml_permute(ctx, values, 0, 2, 1, 3);
+    y = ggml_cont_2d(ctx, y, static_cast<int64_t>(head_dim) * heads, tokens);
+
+    ggml_cgraph * graph = ggml_new_graph(ctx);
+    ggml_build_forward_expand(graph, y);
+    const ggml_status status = ggml_graph_compute_with_ctx(ctx, graph, std::max(1, backend_.n_threads));
+    if (status != GGML_STATUS_SUCCESS) {
+        ggml_free(ctx);
+        throw std::runtime_error("ggml action expert attention graph compute failed");
+    }
+
+    out.assign(
+        ggml_get_data_f32(y),
+        ggml_get_data_f32(y) + qkv_size);
     ggml_free(ctx);
 }
 
