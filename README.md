@@ -230,6 +230,8 @@ both from vlacpp-named fixtures and from OpenPI-named safetensors through the
 `map-openpi-tensors.py --include-inventory` adds top-level `family`,
 `expected_count`, `mapped_count`, and `coverage` fields, plus group-level
 mapped/unmapped counts for planning the remaining full-model tensor map.
+Current real HF action-head maps cover 10/777 pi0 tensors and 8/812 pi0.5
+tensors; the unmapped tensors are the `paligemma_with_expert` backbone.
 
 See `docs/pi0-infer-audit.md` for the current prompt-to-artifact completion
 audit and the remaining gaps before full OpenPI parity.

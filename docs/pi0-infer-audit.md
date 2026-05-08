@@ -10,7 +10,7 @@ sampling, and OpenPI comparison.
 | --- | --- | --- |
 | Git branch initialized | `git branch --show-current` reports `pi0-infer`; baseline commit is `cd35c54` (`pi0: add restricted gguf inference path`). | Done |
 | HF checkpoint discovery/download path | `tools/inspect-safetensors.py` and `tools/run-action-head-smoke.py` consume `hf://maxqualia/openpi-pi0-corkinbox100-1882950e/model.safetensors` with range reads; pi0.5 action-head smoke was verified against `hf://Tacoin/openpi-pi0.5-libero-onnx/checkpoints/pi05_libero_pytorch/model.safetensors`; `convert-openpi-to-gguf.py --norm-stats` consumes HF pi0.5 Libero config/norm stats. | Partial |
-| GGUF conversion | `tools/convert-openpi-to-gguf.py` writes GGUF for tiny velocity tensors, tiny safetensors, local/remote mapped OpenPI action-head tensors, BF16 remote tensors, and F16 local tensors. Tensor-map manifests preserve `vlacpp.metadata` from safetensors headers when present, so mapped local fixtures infer dimensions without command-line overrides. Metadata-less mapped OpenPI action-head shards infer `action_dim` from action projection tensors and `state_dim` from `state_proj.weight` when available. `tools/inspect-gguf.py` verifies emitted tensor names/shapes. Real pi0 HF inventory currently maps 10/777 tensors; 767 unmapped tensors are under `paligemma_with_expert`. | Partial |
+| GGUF conversion | `tools/convert-openpi-to-gguf.py` writes GGUF for tiny velocity tensors, tiny safetensors, local/remote mapped OpenPI action-head tensors, BF16 remote tensors, and F16 local tensors. Tensor-map manifests preserve `vlacpp.metadata` from safetensors headers when present, so mapped local fixtures infer dimensions without command-line overrides. Metadata-less mapped OpenPI action-head shards infer `action_dim` from action projection tensors and `state_dim` from `state_proj.weight` when available. `tools/inspect-gguf.py` verifies emitted tensor names/shapes. Real pi0 HF inventory currently maps 10/777 tensors; real pi0.5 HF inventory maps 8/812 tensors. The unmapped tensors are `paligemma_with_expert`. | Partial |
 | Model forward | `src/models/pi0.cpp` implements mock/tiny velocity forward, restricted pi0 state/action-head forward, and restricted pi0.5 action/time-head forward. Full SigLIP/PaliGemma/Gemma backbone is not implemented. | Partial |
 | Flow sampling | `src/sampling/flow.cpp` Euler flow sampler is wired into mock, tiny velocity, and action-head paths. | Done for implemented paths |
 | OpenPI comparison | `tools/compare-openpi-reference.py` compares tiny OpenPI-style math; `tools/compare-openpi-policy.py` can call official OpenPI policy API when installed and requires `full-openpi` capability by default; `tests/run_fake_openpi_policy_compare.py` validates both the restricted-model rejection and explicit subset-test override. Real official checkpoint parity has not been executed. | Partial |
@@ -144,7 +144,9 @@ Latest verified smoke outputs:
   covers the state projection and action-head subset only. A real pi0 HF header
   inventory for
   `hf://maxqualia/openpi-pi0-corkinbox100-1882950e/model.safetensors` maps
-  10/777 tensors; the remaining 767 tensors are `paligemma_with_expert`.
+  10/777 tensors; a real pi0.5 HF header inventory for
+  `hf://Tacoin/openpi-pi0.5-libero-onnx/checkpoints/pi05_libero_pytorch/model.safetensors`
+  maps 8/812 tensors. The remaining tensors are `paligemma_with_expert`.
 - Runtime does not implement SigLIP image encoder, PaliGemma/Gemma prefix/suffix
   transformer, KV cache execution, or full pi0.5 AdaRMS conditioning. The
   restricted pi0.5 path only approximates the time-conditioned action head.
