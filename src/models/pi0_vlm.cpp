@@ -21,11 +21,19 @@ float mean_or_zero(const std::vector<float> & values) {
 } // namespace
 
 Pi0Vlm::Pi0Vlm(const ModelConfig & config, const BackendConfig & backend, const TensorMap & tensors)
-    : config_(config), backend_(backend), tensors_(tensors) {}
+    : config_(config), backend_(backend), tensors_(tensors), language_prefix_(config, backend, tensors) {}
 
 bool Pi0Vlm::has_vision_projector() const {
     return find_tensor("vlacpp.openpi.vision_projector.weight") != nullptr &&
         find_tensor("vlacpp.openpi.vision_projector.bias") != nullptr;
+}
+
+bool Pi0Vlm::has_language_prefix() const {
+    return config_.openpi_language_layers > 0 &&
+        config_.openpi_language_width > 0 &&
+        config_.openpi_language_q_out > 0 &&
+        config_.openpi_language_kv_out > 0 &&
+        language_prefix_.has_layer(0);
 }
 
 void Pi0Vlm::project_vision_tokens(
@@ -84,6 +92,46 @@ void Pi0Vlm::project_vision_tokens(
         ggml_get_data_f32(y),
         ggml_get_data_f32(y) + static_cast<size_t>(token_count) * static_cast<size_t>(language_width));
     ggml_free(ctx);
+}
+
+void Pi0Vlm::prefill_prefix_from_embeddings(
+    KvCache & cache,
+    const std::vector<float> & embeddings,
+    int token_count) const {
+    if (token_count <= 0) {
+        cache.reset();
+        cache.prefix_valid = true;
+        return;
+    }
+    const int width = config_.openpi_language_width;
+    if (!has_language_prefix() ||
+        width <= 0 ||
+        config_.openpi_language_kv_out <= 0 ||
+        config_.openpi_language_q_out % config_.openpi_language_kv_out != 0 ||
+        embeddings.size() != static_cast<size_t>(token_count) * static_cast<size_t>(width)) {
+        throw std::invalid_argument("pi0 prefix embeddings have incompatible shape");
+    }
+
+    const int head_dim = config_.openpi_language_kv_out;
+    const int heads = config_.openpi_language_q_out / head_dim;
+    const int kv_heads = config_.openpi_language_kv_out / head_dim;
+    std::vector<int> positions(static_cast<size_t>(token_count), 0);
+    for (int i = 0; i < token_count; ++i) {
+        positions[static_cast<size_t>(i)] = i;
+    }
+
+    std::vector<float> hidden;
+    language_prefix_.prefill_batch(
+        embeddings,
+        positions,
+        token_count,
+        heads,
+        kv_heads,
+        head_dim,
+        cache.prefix_layers,
+        hidden);
+    cache.token_count = static_cast<size_t>(token_count);
+    cache.prefix_valid = true;
 }
 
 void Pi0Vlm::prefill_prefix(KvCache & cache, const ObservationData & observation) const {

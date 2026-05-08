@@ -507,6 +507,21 @@ int main() {
                    2,
                    3,
                    2));
+    if (!vlm.has_language_prefix()) {
+        std::cerr << "expected vlm language prefix\n";
+        return 1;
+    }
+    vlacpp::KvCache vlm_cache;
+    vlm.prefill_prefix_from_embeddings(vlm_cache, input, 2);
+    if (!vlm_cache.prefix_valid || vlm_cache.token_count != 2 || vlm_cache.prefix_layers.size() != 1) {
+        std::cerr << "expected vlm prefix cache\n";
+        return 1;
+    }
+    std::vector<vlacpp::PrefixLayerKv> vlm_expected_cache;
+    std::vector<float> vlm_expected_out;
+    language.prefill_batch(input, {0, 1}, 2, 2, 1, 2, vlm_expected_cache, vlm_expected_out);
+    require_close(vlm_cache.prefix_layers[0].k, vlm_expected_cache[0].k);
+    require_close(vlm_cache.prefix_layers[0].v, vlm_expected_cache[0].v);
 
     tensors["vlacpp.openpi.action_in_proj.weight"] = tensor({1, 2}, {0.4f, -0.25f});
     tensors["vlacpp.openpi.action_in_proj.bias"] = tensor({2}, {0.05f, -0.1f});
