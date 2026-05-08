@@ -337,6 +337,15 @@ if(VLACPP_BUILD_TESTS)
                 --model "${VLACPP_PROJECTOR_METADATA_GGUF}"
         )
         set_tests_properties(vlacpp-projector-metadata-check PROPERTIES DEPENDS vlacpp-projector-metadata-convert)
+        add_test(
+            NAME vlacpp-truncated-manifest-convert
+            COMMAND
+                ${Python3_EXECUTABLE}
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/check_truncated_manifest_convert.py"
+                --repo "${CMAKE_CURRENT_SOURCE_DIR}"
+                --work-dir "${CMAKE_CURRENT_BINARY_DIR}/truncated-manifest-convert"
+        )
+        set_tests_properties(vlacpp-truncated-manifest-convert PROPERTIES SKIP_RETURN_CODE 77)
 
         add_test(
             NAME vlacpp-action-head-safetensors-create

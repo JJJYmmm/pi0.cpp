@@ -20,7 +20,9 @@ DEFAULT_PI05_NORM_STATS = "hf://Tacoin/openpi-pi0.5-libero-onnx/assets/physical-
 
 
 def run(command: list[str]) -> None:
-    subprocess.run(command, check=True)
+    result = subprocess.run(command)
+    if result.returncode != 0:
+        raise SystemExit(result.returncode)
 
 
 def main() -> None:

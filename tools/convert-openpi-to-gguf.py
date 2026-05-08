@@ -177,6 +177,27 @@ def read_local_range(path: Path, begin: int, end: int) -> bytes:
         return handle.read(end - begin + 1)
 
 
+def dtype_nbytes(dtype: str) -> int:
+    if dtype == "F32":
+        return 4
+    if dtype in ("F16", "BF16"):
+        return 2
+    raise SystemExit(f"unsupported mapped tensor dtype {dtype}; expected F32, F16, or BF16")
+
+
+def element_count(shape: list[int]) -> int:
+    count = 1
+    for dim in shape:
+        count *= int(dim)
+    return count
+
+
+def validate_tensor_payload(name: str, dtype: str, shape: list[int], raw: bytes) -> None:
+    expected = element_count(shape) * dtype_nbytes(dtype)
+    if len(raw) != expected:
+        raise SystemExit(f"truncated tensor payload for {name}: expected {expected} bytes, got {len(raw)}")
+
+
 def bfloat16_to_float32(raw: bytes) -> list[float]:
     values = []
     for (bits,) in struct.iter_unpack("<H", raw):
@@ -186,16 +207,23 @@ def bfloat16_to_float32(raw: bytes) -> list[float]:
 
 def tensor_payload_to_float32(dtype: str, raw: bytes) -> list[float]:
     if dtype == "F32":
+        if len(raw) % 4 != 0:
+            raise SystemExit("F32 tensor payload byte count is not divisible by 4")
         return list(struct.unpack("<" + "f" * (len(raw) // 4), raw))
     if dtype == "F16":
+        if len(raw) % 2 != 0:
+            raise SystemExit("F16 tensor payload byte count is not divisible by 2")
         try:
             import numpy as np
         except ImportError as exc:
             raise SystemExit("F16 safetensors conversion requires numpy") from exc
         return np.frombuffer(raw, dtype="<f2").astype("float32").tolist()
     if dtype == "BF16":
+        if len(raw) % 2 != 0:
+            raise SystemExit("BF16 tensor payload byte count is not divisible by 2")
         return bfloat16_to_float32(raw)
-    raise SystemExit(f"unsupported mapped tensor dtype {dtype}; expected F32, F16, or BF16")
+    dtype_nbytes(dtype)
+    raise RuntimeError("unreachable")
 
 
 def load_remote_safetensors(spec: str) -> dict[str, Any]:
@@ -221,6 +249,7 @@ def load_remote_safetensors(spec: str) -> dict[str, Any]:
             raise SystemExit(f"remote tensor {name} has unsupported dtype {meta['dtype']}; expected F32")
         begin, end = meta["data_offsets"]
         raw = read_remote_range(url, data_begin + begin, data_begin + end - 1)
+        validate_tensor_payload(name, meta["dtype"], meta["shape"], raw)
         count = len(raw) // 4
         tensors[name] = {
             "shape": meta["shape"],
@@ -256,6 +285,7 @@ def load_tensor_map_manifest(manifest_path: Path) -> dict[str, Any]:
     for tensor in manifest["tensors"]:
         begin, end = tensor["data_offsets"]
         raw = read_range(data_begin + begin, data_begin + end - 1)
+        validate_tensor_payload(tensor["target"], tensor["dtype"], tensor["shape"], raw)
         tensors[tensor["target"]] = {
             "shape": tensor["shape"],
             "data": tensor_payload_to_float32(tensor["dtype"], raw),
