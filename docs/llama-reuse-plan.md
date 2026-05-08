@@ -34,6 +34,8 @@ Implication for pi0:
   encoder while preserving the existing vlacpp C ABI.
 - Keep the OpenPI/PaliGemma `multi_modal_projector.linear` as a direct ggml
   projection unless/until the exact mtmd projector path is proven equivalent.
+- Keep the runtime split as `Pi0Vlm` for prefix/backbone work and
+  `Pi0ActionDecoder` for OpenPI action/time/state decoding and flow velocity.
 - Keep conversion on the llama.cpp `gguf-py` writer path and add only
   OpenPI-specific tensor naming/metadata logic in this repo.
 - Keep OpenPI-specific observation preprocessing, action head wiring, flow
