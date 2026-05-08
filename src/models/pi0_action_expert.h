@@ -15,6 +15,13 @@ public:
         const std::vector<float> & tokens,
         int batch,
         std::vector<float> & out) const;
+    void qkv_batch(
+        int layer,
+        const std::vector<float> & tokens,
+        int batch,
+        std::vector<float> & q,
+        std::vector<float> & k,
+        std::vector<float> & v) const;
     void mlp_batch(int layer, const std::vector<float> & tokens, int batch, std::vector<float> & out) const;
 
 private:

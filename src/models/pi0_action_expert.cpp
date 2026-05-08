@@ -116,6 +116,83 @@ void Pi0ActionExpert::norm_batch(
     ggml_free(ctx);
 }
 
+void Pi0ActionExpert::qkv_batch(
+    int layer,
+    const std::vector<float> & tokens,
+    int batch,
+    std::vector<float> & q,
+    std::vector<float> & k,
+    std::vector<float> & v) const {
+    if (batch <= 0 ||
+        config_.openpi_action_expert_width <= 0 ||
+        config_.openpi_action_expert_q_out <= 0 ||
+        config_.openpi_action_expert_kv_out <= 0) {
+        throw std::invalid_argument("invalid pi0 action expert QKV dimensions");
+    }
+    const std::string prefix = layer_prefix(layer) + "self_attn.";
+    const Tensor * q_w = find_tensor(prefix + "q_proj.weight");
+    const Tensor * k_w = find_tensor(prefix + "k_proj.weight");
+    const Tensor * v_w = find_tensor(prefix + "v_proj.weight");
+    if (q_w == nullptr || k_w == nullptr || v_w == nullptr) {
+        throw std::invalid_argument("missing pi0 action expert QKV tensors");
+    }
+    const int64_t width = config_.openpi_action_expert_width;
+    const int64_t q_out = config_.openpi_action_expert_q_out;
+    const int64_t kv_out = config_.openpi_action_expert_kv_out;
+    require_weight_shape(*q_w, width, q_out, "action expert q_proj");
+    require_weight_shape(*k_w, width, kv_out, "action expert k_proj");
+    require_weight_shape(*v_w, width, kv_out, "action expert v_proj");
+    if (tokens.size() != static_cast<size_t>(batch) * static_cast<size_t>(width)) {
+        throw std::invalid_argument("action expert QKV input has incompatible shape");
+    }
+
+    const size_t tensor_bytes =
+        (q_w->data.size() + k_w->data.size() + v_w->data.size() + tokens.size()) * sizeof(float) +
+        static_cast<size_t>(batch) * static_cast<size_t>(q_out + 2 * kv_out) * sizeof(float);
+    const size_t context_size = std::max<size_t>(64 * 1024 * 1024, tensor_bytes * 4 + 1024 * 1024);
+    ggml_init_params params{};
+    params.mem_size = context_size;
+    params.mem_buffer = nullptr;
+    params.no_alloc = false;
+    ggml_context * ctx = ggml_init(params);
+    if (ctx == nullptr) {
+        throw std::runtime_error("failed to initialize ggml context");
+    }
+
+    ggml_tensor * qw = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, width, q_out);
+    ggml_tensor * kw = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, width, kv_out);
+    ggml_tensor * vw = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, width, kv_out);
+    ggml_tensor * x = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, width, batch);
+    copy_tensor_data(qw, *q_w);
+    copy_tensor_data(kw, *k_w);
+    copy_tensor_data(vw, *v_w);
+    std::memcpy(ggml_get_data_f32(x), tokens.data(), tokens.size() * sizeof(float));
+
+    ggml_tensor * q_out_tensor = ggml_mul_mat(ctx, qw, x);
+    ggml_tensor * k_out_tensor = ggml_mul_mat(ctx, kw, x);
+    ggml_tensor * v_out_tensor = ggml_mul_mat(ctx, vw, x);
+    ggml_cgraph * graph = ggml_new_graph(ctx);
+    ggml_build_forward_expand(graph, q_out_tensor);
+    ggml_build_forward_expand(graph, k_out_tensor);
+    ggml_build_forward_expand(graph, v_out_tensor);
+    const ggml_status status = ggml_graph_compute_with_ctx(ctx, graph, std::max(1, backend_.n_threads));
+    if (status != GGML_STATUS_SUCCESS) {
+        ggml_free(ctx);
+        throw std::runtime_error("ggml action expert QKV graph compute failed");
+    }
+
+    q.assign(
+        ggml_get_data_f32(q_out_tensor),
+        ggml_get_data_f32(q_out_tensor) + static_cast<size_t>(batch) * static_cast<size_t>(q_out));
+    k.assign(
+        ggml_get_data_f32(k_out_tensor),
+        ggml_get_data_f32(k_out_tensor) + static_cast<size_t>(batch) * static_cast<size_t>(kv_out));
+    v.assign(
+        ggml_get_data_f32(v_out_tensor),
+        ggml_get_data_f32(v_out_tensor) + static_cast<size_t>(batch) * static_cast<size_t>(kv_out));
+    ggml_free(ctx);
+}
+
 void Pi0ActionExpert::mlp_batch(
     int layer,
     const std::vector<float> & tokens,

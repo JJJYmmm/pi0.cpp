@@ -84,6 +84,8 @@ vlacpp::Tensor tensor(std::vector<int64_t> shape, std::vector<float> data) {
 int main() {
     vlacpp::ModelConfig config;
     config.openpi_action_expert_width = 2;
+    config.openpi_action_expert_q_out = 4;
+    config.openpi_action_expert_kv_out = 2;
     config.openpi_action_expert_mlp_width = 3;
     config.openpi_action_expert_layers = 1;
     vlacpp::BackendConfig backend;
@@ -93,6 +95,10 @@ int main() {
     const std::string mlp_prefix = layer_prefix + "mlp.";
     tensors[layer_prefix + "input_layernorm.weight"] = tensor({2}, {-0.1f, 0.25f});
     tensors[layer_prefix + "post_attention_layernorm.weight"] = tensor({2}, {0.05f, -0.2f});
+    tensors[layer_prefix + "self_attn.q_proj.weight"] =
+        tensor({2, 4}, {0.1f, -0.2f, 0.3f, 0.4f, -0.5f, 0.6f, 0.7f, -0.8f});
+    tensors[layer_prefix + "self_attn.k_proj.weight"] = tensor({2, 2}, {0.2f, 0.1f, -0.3f, 0.5f});
+    tensors[layer_prefix + "self_attn.v_proj.weight"] = tensor({2, 2}, {-0.4f, 0.6f, 0.8f, -0.2f});
     tensors[mlp_prefix + "gate_proj.weight"] = tensor({2, 3}, {0.2f, -0.1f, -0.3f, 0.4f, 0.1f, 0.5f});
     tensors[mlp_prefix + "up_proj.weight"] = tensor({2, 3}, {0.6f, 0.2f, -0.2f, 0.3f, 0.4f, -0.5f});
     tensors[mlp_prefix + "down_proj.weight"] = tensor({3, 2}, {0.3f, -0.2f, 0.1f, -0.4f, 0.2f, 0.5f});
@@ -112,6 +118,14 @@ int main() {
 
     expert.post_attention_norm_batch(0, input, 2, norm_actual);
     require_close(norm_actual, rms_norm(tensors[layer_prefix + "post_attention_layernorm.weight"].data, input, 2, 2));
+
+    std::vector<float> q;
+    std::vector<float> k;
+    std::vector<float> v;
+    expert.qkv_batch(0, input, 2, q, k, v);
+    require_close(q, linear(tensors[layer_prefix + "self_attn.q_proj.weight"].data, input, 2, 2, 4));
+    require_close(k, linear(tensors[layer_prefix + "self_attn.k_proj.weight"].data, input, 2, 2, 2));
+    require_close(v, linear(tensors[layer_prefix + "self_attn.v_proj.weight"].data, input, 2, 2, 2));
 
     std::vector<float> gate = linear(tensors[mlp_prefix + "gate_proj.weight"].data, input, 2, 2, 3);
     std::vector<float> up = linear(tensors[mlp_prefix + "up_proj.weight"].data, input, 2, 2, 3);
