@@ -41,6 +41,7 @@ struct ModelConfig {
 };
 
 struct Tensor {
+    // GGUF/ggml dimension order: shape[0] is ne0, shape[1] is ne1, etc.
     std::vector<int64_t> shape;
     std::vector<float> data;
 };

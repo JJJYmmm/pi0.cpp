@@ -39,13 +39,13 @@ void ggml_linear_batch(
     if (weight.shape.size() != 2 || bias.shape.size() != 1) {
         throw std::invalid_argument("linear expects rank-2 weight and rank-1 bias");
     }
-    const int64_t in_dim = weight.shape[0];
-    const int64_t out_dim = weight.shape[1];
-    if (out_dim <= 0 || in_dim <= 0 || batch <= 0 ||
-        bias.shape[0] != out_dim ||
-        input.size() != static_cast<size_t>(batch) * static_cast<size_t>(in_dim) ||
-        weight.data.size() != static_cast<size_t>(out_dim * in_dim) ||
-        bias.data.size() != static_cast<size_t>(out_dim)) {
+    const int64_t ne0 = weight.shape[0];
+    const int64_t ne1 = weight.shape[1];
+    if (ne0 <= 0 || ne1 <= 0 || batch <= 0 ||
+        bias.shape[0] != ne1 ||
+        input.size() != static_cast<size_t>(batch) * static_cast<size_t>(ne0) ||
+        weight.data.size() != static_cast<size_t>(ne0 * ne1) ||
+        bias.data.size() != static_cast<size_t>(ne1)) {
         throw std::invalid_argument("linear tensor shapes are inconsistent");
     }
 
@@ -53,7 +53,7 @@ void ggml_linear_batch(
         weight.data.size() * sizeof(float) +
         bias.data.size() * sizeof(float) +
         input.size() * sizeof(float) +
-        static_cast<size_t>(batch) * static_cast<size_t>(out_dim) * sizeof(float);
+        static_cast<size_t>(batch) * static_cast<size_t>(ne1) * sizeof(float);
     const size_t context_size = std::max<size_t>(64 * 1024 * 1024, tensor_bytes * 4 + 1024 * 1024);
     ggml_init_params params{};
     params.mem_size = context_size;
@@ -64,9 +64,9 @@ void ggml_linear_batch(
         throw std::runtime_error("failed to initialize ggml context");
     }
 
-    ggml_tensor * w = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, in_dim, out_dim);
-    ggml_tensor * x = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, in_dim, batch);
-    ggml_tensor * b = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, out_dim);
+    ggml_tensor * w = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, ne0, ne1);
+    ggml_tensor * x = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, ne0, batch);
+    ggml_tensor * b = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, ne1);
     std::memcpy(ggml_get_data_f32(w), weight.data.data(), weight.data.size() * sizeof(float));
     std::memcpy(ggml_get_data_f32(x), input.data(), input.size() * sizeof(float));
     std::memcpy(ggml_get_data_f32(b), bias.data.data(), bias.data.size() * sizeof(float));
@@ -83,7 +83,7 @@ void ggml_linear_batch(
 
     output.assign(
         ggml_get_data_f32(y),
-        ggml_get_data_f32(y) + static_cast<size_t>(batch) * static_cast<size_t>(out_dim));
+        ggml_get_data_f32(y) + static_cast<size_t>(batch) * static_cast<size_t>(ne1));
     ggml_free(ctx);
 }
 
