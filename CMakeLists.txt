@@ -112,6 +112,17 @@ if(VLACPP_BUILD_TESTS)
                 --require-mtmd-target
         )
         add_test(
+            NAME vlacpp-openpi-llama-reuse
+            COMMAND
+                ${Python3_EXECUTABLE}
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/check-openpi-llama-reuse.py"
+                "${VLACPP_OPENPI_GRAPH_MANIFEST}"
+                --repo "${CMAKE_CURRENT_SOURCE_DIR}"
+                --expect-vision-decision reuse
+                --expect-action-expert-decision custom-ggml-graph
+                --expect-action-head-decision custom-direct-ggml
+        )
+        add_test(
             NAME vlacpp-tiny-gguf-convert
             COMMAND
                 ${Python3_EXECUTABLE}

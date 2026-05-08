@@ -40,4 +40,7 @@ python3 tools/check-llama-components.py \
   --build-dir build \
   --require-ggml-targets \
   --require-mtmd-target
+python3 tools/check-openpi-llama-reuse.py \
+  tests/openpi-graph-manifest.json \
+  --repo .
 ```
