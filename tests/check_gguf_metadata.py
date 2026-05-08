@@ -19,6 +19,7 @@ EXPECTED = {
     "vlacpp.state_std": [2.0, 4.0],
     "vlacpp.action_mean": [0.1, -0.2],
     "vlacpp.action_std": [1.5, 0.25],
+    "vlacpp.openpi.action_width": 4,
 }
 
 

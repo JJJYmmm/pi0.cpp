@@ -267,7 +267,9 @@ implemented restricted action-head path.
 Use `tools/summarize-openpi-graph.py` on a full manifest or remote safetensors
 source to extract the graph dimensions needed by a llama.cpp/ggml implementation:
 action width/dimension, vision tower layers and patch size, PaliGemma language
-layers, and action expert layers.
+layers, and action expert layers. The converter writes the inferred values it
+can see into `vlacpp.openpi.*` GGUF metadata keys so the eventual C++ graph
+builder can consume dimensions without rescanning the original checkpoint.
 
 See `docs/pi0-infer-audit.md` for the current prompt-to-artifact completion
 audit and the remaining gaps before full OpenPI parity.

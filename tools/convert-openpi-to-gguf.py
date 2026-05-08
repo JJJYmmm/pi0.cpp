@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import struct
 import time
 from pathlib import Path
@@ -308,13 +309,108 @@ def infer_metadata_from_tensors(tensors: dict[str, dict[str, Any]]) -> dict[str,
     return inferred
 
 
+def strip_model_prefix(name: str) -> str:
+    return name[len("model.") :] if name.startswith("model.") else name
+
+
+def find_shape(tensors: dict[str, dict[str, Any]], suffix: str) -> list[int] | None:
+    for name, tensor in tensors.items():
+        if strip_model_prefix(name) == suffix:
+            return [int(v) for v in tensor["shape"]]
+    return None
+
+
+def layer_count(tensors: dict[str, dict[str, Any]], pattern: str) -> int | None:
+    regex = re.compile(pattern)
+    indices = set()
+    for name in tensors:
+        match = regex.match(strip_model_prefix(name))
+        if match:
+            indices.add(int(match.group(1)))
+    if not indices:
+        return None
+    return len(indices)
+
+
+def infer_openpi_graph_metadata(tensors: dict[str, dict[str, Any]]) -> dict[str, int]:
+    inferred: dict[str, int] = {}
+    action_in = find_shape(tensors, "vlacpp.openpi.action_in_proj.weight") or find_shape(tensors, "action_in_proj.weight")
+    patch = find_shape(
+        tensors,
+        "paligemma_with_expert.paligemma.model.vision_tower.vision_model.embeddings.patch_embedding.weight",
+    )
+    language_q = find_shape(
+        tensors,
+        "paligemma_with_expert.paligemma.model.language_model.layers.0.self_attn.q_proj.weight",
+    )
+    language_k = find_shape(
+        tensors,
+        "paligemma_with_expert.paligemma.model.language_model.layers.0.self_attn.k_proj.weight",
+    )
+    language_down = find_shape(
+        tensors,
+        "paligemma_with_expert.paligemma.model.language_model.layers.0.mlp.down_proj.weight",
+    )
+    expert_q = find_shape(
+        tensors,
+        "paligemma_with_expert.gemma_expert.model.layers.0.self_attn.q_proj.weight",
+    )
+    expert_k = find_shape(
+        tensors,
+        "paligemma_with_expert.gemma_expert.model.layers.0.self_attn.k_proj.weight",
+    )
+    expert_down = find_shape(
+        tensors,
+        "paligemma_with_expert.gemma_expert.model.layers.0.mlp.down_proj.weight",
+    )
+    if action_in is not None and len(action_in) == 2:
+        inferred["openpi_action_width"] = action_in[0]
+    if patch is not None and len(patch) == 4:
+        inferred["openpi_vision_width"] = patch[0]
+        inferred["openpi_vision_patch_height"] = patch[2]
+        inferred["openpi_vision_patch_width"] = patch[3]
+    if language_q is not None and len(language_q) == 2:
+        inferred["openpi_language_width"] = language_q[1]
+        inferred["openpi_language_q_out"] = language_q[0]
+    if language_k is not None and len(language_k) == 2:
+        inferred["openpi_language_kv_out"] = language_k[0]
+    if language_down is not None and len(language_down) == 2:
+        inferred["openpi_language_mlp_width"] = language_down[1]
+    if expert_q is not None and len(expert_q) == 2:
+        inferred["openpi_action_expert_width"] = expert_q[1]
+        inferred["openpi_action_expert_q_out"] = expert_q[0]
+    if expert_k is not None and len(expert_k) == 2:
+        inferred["openpi_action_expert_kv_out"] = expert_k[0]
+    if expert_down is not None and len(expert_down) == 2:
+        inferred["openpi_action_expert_mlp_width"] = expert_down[1]
+    counts = {
+        "openpi_vision_layers": layer_count(
+            tensors,
+            r"paligemma_with_expert\.paligemma\.model\.vision_tower\.vision_model\.encoder\.layers\.(\d+)\.",
+        ),
+        "openpi_language_layers": layer_count(
+            tensors,
+            r"paligemma_with_expert\.paligemma\.model\.language_model\.layers\.(\d+)\.",
+        ),
+        "openpi_action_expert_layers": layer_count(
+            tensors,
+            r"paligemma_with_expert\.gemma_expert\.model\.layers\.(\d+)\.",
+        ),
+    }
+    for key, value in counts.items():
+        if value is not None:
+            inferred[key] = value
+    return inferred
+
+
 def build_metadata(args: argparse.Namespace, checkpoint: dict[str, Any]) -> dict[str, Any]:
     metadata = checkpoint.get("metadata", {})
-    inferred = infer_metadata_from_tensors(checkpoint.get("tensors", {}))
+    tensors = checkpoint.get("tensors", {})
+    inferred = {**infer_metadata_from_tensors(tensors), **infer_openpi_graph_metadata(tensors)}
     source = {**checkpoint, **inferred, **metadata}
     state_dim = int(source.get("state_dim", args.state_dim))
     action_dim = int(source.get("action_dim", args.action_dim))
-    return {
+    result = {
         "model_type": source.get("model_type", args.model_type),
         "image_width": int(source.get("image_width", args.image_width)),
         "image_height": int(source.get("image_height", args.image_height)),
@@ -330,6 +426,10 @@ def build_metadata(args: argparse.Namespace, checkpoint: dict[str, Any]) -> dict
         "source_checkpoint": args.checkpoint or "",
         "format": "vlacpp-json-metadata-v0",
     }
+    for key in inferred:
+        if key.startswith("openpi_"):
+            result[key] = int(inferred[key])
+    return result
 
 
 def build_tensors(
@@ -417,7 +517,7 @@ def build_tensors(
 
 
 def gguf_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
-    return {
+    result = {
         "general.architecture": metadata["model_type"],
         "vlacpp.model_type": metadata["model_type"],
         "vlacpp.image_width": metadata["image_width"],
@@ -432,6 +532,27 @@ def gguf_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
         "vlacpp.action_mean": metadata["action_mean"],
         "vlacpp.action_std": metadata["action_std"],
     }
+    optional_ints = {
+        "vlacpp.openpi.action_width": "openpi_action_width",
+        "vlacpp.openpi.vision_width": "openpi_vision_width",
+        "vlacpp.openpi.vision_patch_height": "openpi_vision_patch_height",
+        "vlacpp.openpi.vision_patch_width": "openpi_vision_patch_width",
+        "vlacpp.openpi.vision_layers": "openpi_vision_layers",
+        "vlacpp.openpi.language_width": "openpi_language_width",
+        "vlacpp.openpi.language_q_out": "openpi_language_q_out",
+        "vlacpp.openpi.language_kv_out": "openpi_language_kv_out",
+        "vlacpp.openpi.language_mlp_width": "openpi_language_mlp_width",
+        "vlacpp.openpi.language_layers": "openpi_language_layers",
+        "vlacpp.openpi.action_expert_width": "openpi_action_expert_width",
+        "vlacpp.openpi.action_expert_q_out": "openpi_action_expert_q_out",
+        "vlacpp.openpi.action_expert_kv_out": "openpi_action_expert_kv_out",
+        "vlacpp.openpi.action_expert_mlp_width": "openpi_action_expert_mlp_width",
+        "vlacpp.openpi.action_expert_layers": "openpi_action_expert_layers",
+    }
+    for key, source in optional_ints.items():
+        if source in metadata:
+            result[key] = int(metadata[source])
+    return result
 
 def main() -> None:
     parser = argparse.ArgumentParser()
