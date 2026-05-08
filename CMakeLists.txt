@@ -17,6 +17,7 @@ add_library(vlacpp
     src/models/model.cpp
     src/models/pi0_action_expert.cpp
     src/models/pi0_action_decoder.cpp
+    src/models/pi0_language_prefix.cpp
     src/models/pi0_vlm.cpp
     src/models/pi0.cpp
     src/sampling/flow.cpp

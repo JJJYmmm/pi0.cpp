@@ -1,5 +1,6 @@
 #include "models/pi0_action_expert.h"
 #include "models/pi0_action_decoder.h"
+#include "models/pi0_language_prefix.h"
 
 #include <algorithm>
 #include <cmath>
@@ -238,12 +239,20 @@ int main() {
     config.openpi_action_expert_kv_out = 2;
     config.openpi_action_expert_mlp_width = 3;
     config.openpi_action_expert_layers = 1;
+    config.openpi_language_width = 2;
+    config.openpi_language_q_out = 4;
+    config.openpi_language_kv_out = 2;
+    config.openpi_language_mlp_width = 3;
+    config.openpi_language_layers = 1;
     vlacpp::BackendConfig backend;
     backend.n_threads = 1;
     vlacpp::TensorMap tensors;
     const std::string layer_prefix = "model.paligemma_with_expert.gemma_expert.model.layers.0.";
     const std::string mlp_prefix = layer_prefix + "mlp.";
+    const std::string language_prefix = "model.paligemma_with_expert.paligemma.model.language_model.layers.0.";
+    const std::string language_mlp_prefix = language_prefix + "mlp.";
     tensors["model.paligemma_with_expert.gemma_expert.model.norm.weight"] = tensor({2}, {0.1f, -0.15f});
+    tensors["model.paligemma_with_expert.paligemma.model.language_model.norm.weight"] = tensor({2}, {-0.05f, 0.12f});
     tensors[layer_prefix + "input_layernorm.weight"] = tensor({2}, {-0.1f, 0.25f});
     tensors[layer_prefix + "post_attention_layernorm.weight"] = tensor({2}, {0.05f, -0.2f});
     tensors[layer_prefix + "self_attn.q_proj.weight"] =
@@ -255,6 +264,15 @@ int main() {
     tensors[mlp_prefix + "gate_proj.weight"] = tensor({2, 3}, {0.2f, -0.1f, -0.3f, 0.4f, 0.1f, 0.5f});
     tensors[mlp_prefix + "up_proj.weight"] = tensor({2, 3}, {0.6f, 0.2f, -0.2f, 0.3f, 0.4f, -0.5f});
     tensors[mlp_prefix + "down_proj.weight"] = tensor({3, 2}, {0.3f, -0.2f, 0.1f, -0.4f, 0.2f, 0.5f});
+    tensors[language_prefix + "input_layernorm.weight"] = tensors[layer_prefix + "input_layernorm.weight"];
+    tensors[language_prefix + "post_attention_layernorm.weight"] = tensors[layer_prefix + "post_attention_layernorm.weight"];
+    tensors[language_prefix + "self_attn.q_proj.weight"] = tensors[layer_prefix + "self_attn.q_proj.weight"];
+    tensors[language_prefix + "self_attn.k_proj.weight"] = tensors[layer_prefix + "self_attn.k_proj.weight"];
+    tensors[language_prefix + "self_attn.v_proj.weight"] = tensors[layer_prefix + "self_attn.v_proj.weight"];
+    tensors[language_prefix + "self_attn.o_proj.weight"] = tensors[layer_prefix + "self_attn.o_proj.weight"];
+    tensors[language_mlp_prefix + "gate_proj.weight"] = tensors[mlp_prefix + "gate_proj.weight"];
+    tensors[language_mlp_prefix + "up_proj.weight"] = tensors[mlp_prefix + "up_proj.weight"];
+    tensors[language_mlp_prefix + "down_proj.weight"] = tensors[mlp_prefix + "down_proj.weight"];
 
     const std::vector<float> input = {1.0f, -2.0f, 0.5f, 0.25f};
     vlacpp::Pi0ActionExpert expert(config, backend, tensors);
@@ -447,6 +465,27 @@ int main() {
         prefix_block_expected[i] += prefix_block_attention_out[i];
     }
     require_close(prefix_block_actual, prefix_block_expected);
+
+    vlacpp::Pi0LanguagePrefix language(config, backend, tensors);
+    if (!language.has_layer(0)) {
+        std::cerr << "expected language prefix layer\n";
+        return 1;
+    }
+    std::vector<vlacpp::PrefixLayerKv> language_cache;
+    std::vector<float> language_actual;
+    language.prefill_batch(input, block_positions, 2, 2, 1, 2, language_cache, language_actual);
+    if (language_cache.size() != 1) {
+        std::cerr << "expected one language prefix cache layer\n";
+        return 1;
+    }
+    require_close(language_cache[0].k, block_k);
+    require_close(language_cache[0].v, block_v);
+    std::vector<float> language_expected =
+        rms_norm(tensors["model.paligemma_with_expert.paligemma.model.language_model.norm.weight"].data,
+                 block_expected,
+                 2,
+                 2);
+    require_close(language_actual, language_expected);
 
     tensors["vlacpp.openpi.action_in_proj.weight"] = tensor({1, 2}, {0.4f, -0.25f});
     tensors["vlacpp.openpi.action_in_proj.bias"] = tensor({2}, {0.05f, -0.1f});
