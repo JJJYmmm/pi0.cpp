@@ -15,6 +15,7 @@ add_library(vlacpp
     src/core/json.cpp
     src/core/preprocess.cpp
     src/models/model.cpp
+    src/models/pi0_action_expert.cpp
     src/models/pi0_action_decoder.cpp
     src/models/pi0_vlm.cpp
     src/models/pi0.cpp
@@ -58,6 +59,10 @@ if(VLACPP_BUILD_TESTS)
     add_executable(vlacpp-mtmd-tests tests/test_mtmd_api.cpp)
     target_link_libraries(vlacpp-mtmd-tests PRIVATE vlacpp mtmd)
     add_test(NAME vlacpp-mtmd-api COMMAND vlacpp-mtmd-tests)
+    add_executable(vlacpp-pi0-action-expert-tests tests/test_pi0_action_expert.cpp)
+    target_include_directories(vlacpp-pi0-action-expert-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(vlacpp-pi0-action-expert-tests PRIVATE vlacpp)
+    add_test(NAME vlacpp-pi0-action-expert COMMAND vlacpp-pi0-action-expert-tests)
 
     find_package(Python3 COMPONENTS Interpreter)
     if(Python3_Interpreter_FOUND)

@@ -1,0 +1,93 @@
+#include "models/pi0_action_expert.h"
+
+#include <algorithm>
+#include <cmath>
+#include <cstdlib>
+#include <iostream>
+#include <string>
+#include <utility>
+#include <vector>
+
+namespace {
+
+float gelu(float x) {
+    constexpr float sqrt_2_over_pi = 0.79788456080286535587989211986876f;
+    constexpr float coef = 0.044715f;
+    return 0.5f * x * (1.0f + std::tanh(sqrt_2_over_pi * x * (1.0f + coef * x * x)));
+}
+
+std::vector<float> linear(
+    const std::vector<float> & weight,
+    const std::vector<float> & input,
+    int batch,
+    int in,
+    int out) {
+    std::vector<float> result(static_cast<size_t>(batch) * static_cast<size_t>(out), 0.0f);
+    for (int row = 0; row < batch; ++row) {
+        for (int col = 0; col < out; ++col) {
+            float value = 0.0f;
+            for (int i = 0; i < in; ++i) {
+                value += weight[static_cast<size_t>(col) * static_cast<size_t>(in) + static_cast<size_t>(i)] *
+                    input[static_cast<size_t>(row) * static_cast<size_t>(in) + static_cast<size_t>(i)];
+            }
+            result[static_cast<size_t>(row) * static_cast<size_t>(out) + static_cast<size_t>(col)] = value;
+        }
+    }
+    return result;
+}
+
+void require_close(const std::vector<float> & actual, const std::vector<float> & expected) {
+    if (actual.size() != expected.size()) {
+        std::cerr << "size mismatch\n";
+        std::exit(1);
+    }
+    float max_abs = 0.0f;
+    for (size_t i = 0; i < actual.size(); ++i) {
+        max_abs = std::max(max_abs, std::fabs(actual[i] - expected[i]));
+    }
+    if (max_abs > 3.0e-5f) {
+        std::cerr << "action expert MLP mismatch: max_abs=" << max_abs << "\n";
+        std::exit(1);
+    }
+}
+
+vlacpp::Tensor tensor(std::vector<int64_t> shape, std::vector<float> data) {
+    vlacpp::Tensor result;
+    result.shape = std::move(shape);
+    result.data = std::move(data);
+    return result;
+}
+
+} // namespace
+
+int main() {
+    vlacpp::ModelConfig config;
+    config.openpi_action_expert_width = 2;
+    config.openpi_action_expert_mlp_width = 3;
+    config.openpi_action_expert_layers = 1;
+    vlacpp::BackendConfig backend;
+    backend.n_threads = 1;
+    vlacpp::TensorMap tensors;
+    const std::string prefix = "model.paligemma_with_expert.gemma_expert.model.layers.0.mlp.";
+    tensors[prefix + "gate_proj.weight"] = tensor({2, 3}, {0.2f, -0.1f, -0.3f, 0.4f, 0.1f, 0.5f});
+    tensors[prefix + "up_proj.weight"] = tensor({2, 3}, {0.6f, 0.2f, -0.2f, 0.3f, 0.4f, -0.5f});
+    tensors[prefix + "down_proj.weight"] = tensor({3, 2}, {0.3f, -0.2f, 0.1f, -0.4f, 0.2f, 0.5f});
+
+    const std::vector<float> input = {1.0f, -2.0f, 0.5f, 0.25f};
+    vlacpp::Pi0ActionExpert expert(config, backend, tensors);
+    if (!expert.has_layer(0)) {
+        std::cerr << "expected action expert layer\n";
+        return 1;
+    }
+    std::vector<float> actual;
+    expert.mlp_batch(0, input, 2, actual);
+
+    std::vector<float> gate = linear(tensors[prefix + "gate_proj.weight"].data, input, 2, 2, 3);
+    std::vector<float> up = linear(tensors[prefix + "up_proj.weight"].data, input, 2, 2, 3);
+    for (size_t i = 0; i < gate.size(); ++i) {
+        gate[i] = gelu(gate[i]) * up[i];
+    }
+    const std::vector<float> expected = linear(tensors[prefix + "down_proj.weight"].data, gate, 2, 3, 2);
+    require_close(actual, expected);
+    return 0;
+}
