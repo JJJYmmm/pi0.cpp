@@ -10,6 +10,7 @@ converted GGUF and the corresponding OpenPI checkpoint are available locally.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import importlib.util
 import json
 import subprocess
@@ -73,6 +74,9 @@ def load_observation(args: argparse.Namespace, action_dim: int, horizon: int) ->
 
 
 def run_openpi(args: argparse.Namespace, obs: dict[str, Any], noise: np.ndarray) -> np.ndarray:
+    if args.openpi_loader == "pytorch-prefix":
+        return run_openpi_pytorch_prefix(args, obs, noise)
+
     try:
         from openpi.policies import policy_config
         from openpi.training import config as openpi_config
@@ -89,6 +93,97 @@ def run_openpi(args: argparse.Namespace, obs: dict[str, Any], noise: np.ndarray)
     )
     result = policy.infer(obs, noise=noise)
     return np.asarray(result["actions"], dtype=np.float32)
+
+
+def resolve_safetensors_checkpoint(path: str) -> Path:
+    checkpoint = Path(path)
+    if checkpoint.is_dir():
+        checkpoint = checkpoint / "model.safetensors"
+    if not checkpoint.exists():
+        raise SystemExit(f"OpenPI safetensors checkpoint not found: {checkpoint}")
+    return checkpoint
+
+
+def run_openpi_pytorch_prefix(args: argparse.Namespace, obs: dict[str, Any], noise: np.ndarray) -> np.ndarray:
+    try:
+        import torch
+        from safetensors import safe_open
+
+        from openpi.models import model as openpi_model
+        from openpi.models_pytorch import pi0_pytorch
+        from openpi.training import config as train_config
+    except ImportError as exc:
+        raise SystemExit("official OpenPI PyTorch dependencies are not installed") from exc
+
+    checkpoint = resolve_safetensors_checkpoint(args.openpi_checkpoint)
+    cfg = train_config.get_config(args.openpi_config)
+    cfg = dataclasses.replace(cfg, model=dataclasses.replace(cfg.model, pytorch_compile_mode=None))
+    device = torch.device(args.pytorch_device or ("cuda" if torch.cuda.is_available() else "cpu"))
+
+    model = pi0_pytorch.PI0Pytorch(cfg.model)
+    with safe_open(checkpoint, framework="pt", device="cpu") as tensors_file:
+        keys = set(tensors_file.keys())
+        metadata = tensors_file.metadata() or {}
+        targets = dict(model.named_parameters())
+        targets.update(dict(model.named_buffers()))
+        for name, target in targets.items():
+            source = None
+            if name in keys:
+                source = name
+            elif "model." + name in keys:
+                source = "model." + name
+            elif "model." + name in metadata and metadata["model." + name] in keys:
+                source = metadata["model." + name]
+            if source is None:
+                continue
+            value = tensors_file.get_tensor(source)
+            if tuple(value.shape) != tuple(target.shape):
+                raise SystemExit(
+                    f"shape mismatch for {name}: expected {tuple(target.shape)} "
+                    f"got {tuple(value.shape)} from {source}"
+                )
+            target.data.copy_(value.to(dtype=target.dtype))
+            del value
+
+    model.paligemma_with_expert.to_bfloat16_for_selected_params("bfloat16")
+    model.to(device)
+    model.eval()
+
+    image_keys = ["base_0_rgb", "left_wrist_0_rgb", "right_wrist_0_rgb"]
+    image_dict = {}
+    image_mask = {}
+    for key in image_keys:
+        if key in obs:
+            image = np.asarray(obs[key], dtype=np.uint8)
+            image_dict[key] = torch.as_tensor(image, dtype=torch.uint8, device=device).unsqueeze(0)
+            image_mask[key] = torch.ones((1,), dtype=torch.bool, device=device)
+        else:
+            image_dict[key] = torch.zeros(
+                (1, args.image_height, args.image_width, 3),
+                dtype=torch.uint8,
+                device=device,
+            )
+            image_mask[key] = torch.zeros((1,), dtype=torch.bool, device=device)
+
+    state = np.asarray(obs[args.state_key], dtype=np.float32)
+    if state.shape != (cfg.model.action_dim,):
+        raise SystemExit(f"state shape mismatch: expected {(cfg.model.action_dim,)} got {state.shape}")
+
+    observation = openpi_model.Observation.from_dict(
+        {
+            "image": image_dict,
+            "image_mask": image_mask,
+            "state": torch.as_tensor(state, dtype=torch.float32, device=device).unsqueeze(0),
+            "tokenized_prompt": torch.zeros((1, cfg.model.max_token_len), dtype=torch.long, device=device),
+            "tokenized_prompt_mask": torch.zeros((1, cfg.model.max_token_len), dtype=torch.bool, device=device),
+        }
+    )
+    noise_tensor = torch.as_tensor(noise, dtype=torch.float32, device=device).unsqueeze(0)
+    with torch.no_grad():
+        actions = model.sample_actions(device, observation, noise=noise_tensor, num_steps=args.steps)
+    if device.type == "cuda":
+        torch.cuda.synchronize(device)
+    return np.asarray(actions[0].detach().cpu().to(torch.float32), dtype=np.float32)
 
 
 def run_vlacpp(args: argparse.Namespace) -> np.ndarray:
@@ -127,6 +222,12 @@ def vlacpp_capability(args: argparse.Namespace) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--openpi-loader",
+        choices=["policy", "pytorch-prefix"],
+        default="policy",
+        help="OpenPI loader path; pytorch-prefix handles ModelScope safetensors with model.* keys",
+    )
     parser.add_argument("--openpi-config", required=True, help="OpenPI training config name, e.g. pi05_libero")
     parser.add_argument("--openpi-checkpoint", required=True, help="OpenPI checkpoint dir or gs:// path")
     parser.add_argument("--vlacpp-model", type=Path, required=True, help="converted vlacpp GGUF model")
