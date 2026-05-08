@@ -75,7 +75,31 @@ int main(int argc, char ** argv) {
     }
 
     if (info) {
-        std::cout << "{\n  \"capability\": \"" << vlacpp_model_capability(model) << "\"\n}\n";
+        vlacpp_openpi_graph_info graph{};
+        status = vlacpp_model_openpi_graph_info(model, &graph);
+        if (status != VLACPP_STATUS_OK) {
+            std::cerr << "info failed: " << vlacpp_last_error() << "\n";
+            vlacpp_free_model(model);
+            return 1;
+        }
+        std::cout << "{\n  \"capability\": \"" << vlacpp_model_capability(model)
+                  << "\",\n  \"openpi_graph\": {"
+                  << "\n    \"action_width\": " << graph.action_width
+                  << ",\n    \"vision_width\": " << graph.vision_width
+                  << ",\n    \"vision_patch_height\": " << graph.vision_patch_height
+                  << ",\n    \"vision_patch_width\": " << graph.vision_patch_width
+                  << ",\n    \"vision_layers\": " << graph.vision_layers
+                  << ",\n    \"language_width\": " << graph.language_width
+                  << ",\n    \"language_q_out\": " << graph.language_q_out
+                  << ",\n    \"language_kv_out\": " << graph.language_kv_out
+                  << ",\n    \"language_mlp_width\": " << graph.language_mlp_width
+                  << ",\n    \"language_layers\": " << graph.language_layers
+                  << ",\n    \"action_expert_width\": " << graph.action_expert_width
+                  << ",\n    \"action_expert_q_out\": " << graph.action_expert_q_out
+                  << ",\n    \"action_expert_kv_out\": " << graph.action_expert_kv_out
+                  << ",\n    \"action_expert_mlp_width\": " << graph.action_expert_mlp_width
+                  << ",\n    \"action_expert_layers\": " << graph.action_expert_layers
+                  << "\n  }\n}\n";
         vlacpp_free_model(model);
         return 0;
     }

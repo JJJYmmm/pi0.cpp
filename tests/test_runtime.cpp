@@ -43,6 +43,12 @@ int main() {
     vlacpp_model * model = nullptr;
     vlacpp_model_params model_params = vlacpp_default_model_params();
     require_status(vlacpp_load_model(path, &model_params, &model), "load model");
+    vlacpp_openpi_graph_info graph{};
+    require_status(vlacpp_model_openpi_graph_info(model, &graph), "graph info");
+    if (graph.action_width != 0 || graph.vision_layers != 0 || graph.action_expert_layers != 0) {
+        std::cerr << "mock model should not report openpi graph dimensions\n";
+        return 1;
+    }
 
     vlacpp_context * context = nullptr;
     vlacpp_context_params context_params = vlacpp_default_context_params();

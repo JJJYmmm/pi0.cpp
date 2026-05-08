@@ -187,6 +187,7 @@ if(VLACPP_BUILD_TESTS)
                 --horizon 3
                 --action-dim 2
                 --capability "restricted-pi0-state-action-head"
+                --graph-action-width 4
         )
         add_test(
             NAME vlacpp-action-head-gguf-inspect

@@ -23,6 +23,21 @@ struct ModelConfig {
     std::vector<float> state_std;
     std::vector<float> action_mean;
     std::vector<float> action_std;
+    int openpi_action_width = 0;
+    int openpi_vision_width = 0;
+    int openpi_vision_patch_height = 0;
+    int openpi_vision_patch_width = 0;
+    int openpi_vision_layers = 0;
+    int openpi_language_width = 0;
+    int openpi_language_q_out = 0;
+    int openpi_language_kv_out = 0;
+    int openpi_language_mlp_width = 0;
+    int openpi_language_layers = 0;
+    int openpi_action_expert_width = 0;
+    int openpi_action_expert_q_out = 0;
+    int openpi_action_expert_kv_out = 0;
+    int openpi_action_expert_mlp_width = 0;
+    int openpi_action_expert_layers = 0;
 };
 
 struct Tensor {

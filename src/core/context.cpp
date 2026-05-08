@@ -77,6 +77,31 @@ const char * vlacpp_model_capability(vlacpp_model * model) {
     return model->impl->capability();
 }
 
+vlacpp_status vlacpp_model_openpi_graph_info(
+    vlacpp_model * model,
+    vlacpp_openpi_graph_info * out_info) {
+    if (model == nullptr || model->impl == nullptr || out_info == nullptr) {
+        return vlacpp::fail(VLACPP_STATUS_INVALID_ARGUMENT, "model and out_info are required");
+    }
+    const vlacpp::ModelConfig & config = model->impl->config();
+    out_info->action_width = config.openpi_action_width;
+    out_info->vision_width = config.openpi_vision_width;
+    out_info->vision_patch_height = config.openpi_vision_patch_height;
+    out_info->vision_patch_width = config.openpi_vision_patch_width;
+    out_info->vision_layers = config.openpi_vision_layers;
+    out_info->language_width = config.openpi_language_width;
+    out_info->language_q_out = config.openpi_language_q_out;
+    out_info->language_kv_out = config.openpi_language_kv_out;
+    out_info->language_mlp_width = config.openpi_language_mlp_width;
+    out_info->language_layers = config.openpi_language_layers;
+    out_info->action_expert_width = config.openpi_action_expert_width;
+    out_info->action_expert_q_out = config.openpi_action_expert_q_out;
+    out_info->action_expert_kv_out = config.openpi_action_expert_kv_out;
+    out_info->action_expert_mlp_width = config.openpi_action_expert_mlp_width;
+    out_info->action_expert_layers = config.openpi_action_expert_layers;
+    return VLACPP_STATUS_OK;
+}
+
 vlacpp_status vlacpp_create_context(
     vlacpp_model * model,
     const vlacpp_context_params * params,

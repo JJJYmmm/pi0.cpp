@@ -119,6 +119,9 @@ Expected CTest coverage:
 - CLI `--info` and `vlacpp_model_capability()` report which restricted runtime
   subset is active, so subset smoke tests are not mistaken for full-model parity.
   CLI `--require-full` fails for these restricted subsets.
+- `vlacpp_model_openpi_graph_info()` and CLI `--info` expose parsed
+  `vlacpp.openpi.*` graph metadata from loaded GGUF models; the action-head CLI
+  test verifies `action_width`.
 - `vlacpp-tiny-safetensors-create`: generated safetensors tiny fixture.
 - `vlacpp-tiny-safetensors-convert`: tiny safetensors to GGUF.
 - `vlacpp-tiny-safetensors-inspect`: safetensors header inspection.

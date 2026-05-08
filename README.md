@@ -270,6 +270,8 @@ action width/dimension, vision tower layers and patch size, PaliGemma language
 layers, and action expert layers. The converter writes the inferred values it
 can see into `vlacpp.openpi.*` GGUF metadata keys so the eventual C++ graph
 builder can consume dimensions without rescanning the original checkpoint.
+`vlacpp_model_openpi_graph_info()` and `vlacpp-pi0 --info` expose the parsed
+metadata from the loaded model.
 
 See `docs/pi0-infer-audit.md` for the current prompt-to-artifact completion
 audit and the remaining gaps before full OpenPI parity.

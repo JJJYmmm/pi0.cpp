@@ -68,6 +68,24 @@ typedef struct vlacpp_action_chunk {
     int32_t action_dim;
 } vlacpp_action_chunk;
 
+typedef struct vlacpp_openpi_graph_info {
+    int32_t action_width;
+    int32_t vision_width;
+    int32_t vision_patch_height;
+    int32_t vision_patch_width;
+    int32_t vision_layers;
+    int32_t language_width;
+    int32_t language_q_out;
+    int32_t language_kv_out;
+    int32_t language_mlp_width;
+    int32_t language_layers;
+    int32_t action_expert_width;
+    int32_t action_expert_q_out;
+    int32_t action_expert_kv_out;
+    int32_t action_expert_mlp_width;
+    int32_t action_expert_layers;
+} vlacpp_openpi_graph_info;
+
 VLACPP_API vlacpp_model_params vlacpp_default_model_params(void);
 VLACPP_API vlacpp_context_params vlacpp_default_context_params(void);
 
@@ -78,6 +96,9 @@ VLACPP_API vlacpp_status vlacpp_load_model(
 
 VLACPP_API void vlacpp_free_model(vlacpp_model * model);
 VLACPP_API const char * vlacpp_model_capability(vlacpp_model * model);
+VLACPP_API vlacpp_status vlacpp_model_openpi_graph_info(
+    vlacpp_model * model,
+    vlacpp_openpi_graph_info * out_info);
 
 VLACPP_API vlacpp_status vlacpp_create_context(
     vlacpp_model * model,

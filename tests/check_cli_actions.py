@@ -20,14 +20,19 @@ def main() -> None:
     parser.add_argument("--horizon", type=int, required=True)
     parser.add_argument("--action-dim", type=int, required=True)
     parser.add_argument("--capability")
+    parser.add_argument("--graph-action-width", type=int)
     args = parser.parse_args()
 
-    if args.capability:
+    if args.capability or args.graph_action_width is not None:
         info = json.loads(
             subprocess.check_output([args.binary, "--model", args.model, "--info"], text=True)
         )
-        if info["capability"] != args.capability:
+        if args.capability and info["capability"] != args.capability:
             raise SystemExit(f"unexpected capability: {info['capability']}")
+        if args.graph_action_width is not None:
+            actual = info["openpi_graph"]["action_width"]
+            if actual != args.graph_action_width:
+                raise SystemExit(f"unexpected graph action_width: {actual}")
 
     output = subprocess.check_output(
         [

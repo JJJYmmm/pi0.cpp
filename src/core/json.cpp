@@ -274,6 +274,21 @@ vlacpp_status load_config_file(const std::string & path, ModelConfig & out) {
     out.state_std = obj.get_float_array("state_std");
     out.action_mean = obj.get_float_array("action_mean");
     out.action_std = obj.get_float_array("action_std");
+    out.openpi_action_width = obj.get_int("openpi_action_width", out.openpi_action_width);
+    out.openpi_vision_width = obj.get_int("openpi_vision_width", out.openpi_vision_width);
+    out.openpi_vision_patch_height = obj.get_int("openpi_vision_patch_height", out.openpi_vision_patch_height);
+    out.openpi_vision_patch_width = obj.get_int("openpi_vision_patch_width", out.openpi_vision_patch_width);
+    out.openpi_vision_layers = obj.get_int("openpi_vision_layers", out.openpi_vision_layers);
+    out.openpi_language_width = obj.get_int("openpi_language_width", out.openpi_language_width);
+    out.openpi_language_q_out = obj.get_int("openpi_language_q_out", out.openpi_language_q_out);
+    out.openpi_language_kv_out = obj.get_int("openpi_language_kv_out", out.openpi_language_kv_out);
+    out.openpi_language_mlp_width = obj.get_int("openpi_language_mlp_width", out.openpi_language_mlp_width);
+    out.openpi_language_layers = obj.get_int("openpi_language_layers", out.openpi_language_layers);
+    out.openpi_action_expert_width = obj.get_int("openpi_action_expert_width", out.openpi_action_expert_width);
+    out.openpi_action_expert_q_out = obj.get_int("openpi_action_expert_q_out", out.openpi_action_expert_q_out);
+    out.openpi_action_expert_kv_out = obj.get_int("openpi_action_expert_kv_out", out.openpi_action_expert_kv_out);
+    out.openpi_action_expert_mlp_width = obj.get_int("openpi_action_expert_mlp_width", out.openpi_action_expert_mlp_width);
+    out.openpi_action_expert_layers = obj.get_int("openpi_action_expert_layers", out.openpi_action_expert_layers);
 
     return validate_config(out);
 }

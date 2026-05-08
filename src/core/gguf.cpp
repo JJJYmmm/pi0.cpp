@@ -143,6 +143,51 @@ bool set_metadata_value(Reader & reader, const std::string & key, uint32_t type,
     if (key == "vlacpp.max_token_len" && type == kGgufTypeInt32) {
         return reader.read_scalar(config.max_token_len);
     }
+    if (key == "vlacpp.openpi.action_width" && type == kGgufTypeInt32) {
+        return reader.read_scalar(config.openpi_action_width);
+    }
+    if (key == "vlacpp.openpi.vision_width" && type == kGgufTypeInt32) {
+        return reader.read_scalar(config.openpi_vision_width);
+    }
+    if (key == "vlacpp.openpi.vision_patch_height" && type == kGgufTypeInt32) {
+        return reader.read_scalar(config.openpi_vision_patch_height);
+    }
+    if (key == "vlacpp.openpi.vision_patch_width" && type == kGgufTypeInt32) {
+        return reader.read_scalar(config.openpi_vision_patch_width);
+    }
+    if (key == "vlacpp.openpi.vision_layers" && type == kGgufTypeInt32) {
+        return reader.read_scalar(config.openpi_vision_layers);
+    }
+    if (key == "vlacpp.openpi.language_width" && type == kGgufTypeInt32) {
+        return reader.read_scalar(config.openpi_language_width);
+    }
+    if (key == "vlacpp.openpi.language_q_out" && type == kGgufTypeInt32) {
+        return reader.read_scalar(config.openpi_language_q_out);
+    }
+    if (key == "vlacpp.openpi.language_kv_out" && type == kGgufTypeInt32) {
+        return reader.read_scalar(config.openpi_language_kv_out);
+    }
+    if (key == "vlacpp.openpi.language_mlp_width" && type == kGgufTypeInt32) {
+        return reader.read_scalar(config.openpi_language_mlp_width);
+    }
+    if (key == "vlacpp.openpi.language_layers" && type == kGgufTypeInt32) {
+        return reader.read_scalar(config.openpi_language_layers);
+    }
+    if (key == "vlacpp.openpi.action_expert_width" && type == kGgufTypeInt32) {
+        return reader.read_scalar(config.openpi_action_expert_width);
+    }
+    if (key == "vlacpp.openpi.action_expert_q_out" && type == kGgufTypeInt32) {
+        return reader.read_scalar(config.openpi_action_expert_q_out);
+    }
+    if (key == "vlacpp.openpi.action_expert_kv_out" && type == kGgufTypeInt32) {
+        return reader.read_scalar(config.openpi_action_expert_kv_out);
+    }
+    if (key == "vlacpp.openpi.action_expert_mlp_width" && type == kGgufTypeInt32) {
+        return reader.read_scalar(config.openpi_action_expert_mlp_width);
+    }
+    if (key == "vlacpp.openpi.action_expert_layers" && type == kGgufTypeInt32) {
+        return reader.read_scalar(config.openpi_action_expert_layers);
+    }
     if (key == "vlacpp.image_keys" && type == kGgufTypeArray) {
         return read_string_array(reader, config.image_keys);
     }
