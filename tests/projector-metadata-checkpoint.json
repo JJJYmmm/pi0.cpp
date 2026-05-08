@@ -1,0 +1,70 @@
+{
+  "metadata": {
+    "model_type": "pi0",
+    "image_width": 224,
+    "image_height": 224,
+    "state_dim": 2,
+    "action_dim": 2,
+    "action_horizon": 3,
+    "image_keys": ["base_0_rgb"]
+  },
+  "tensors": {
+    "vlacpp.openpi.action_in_proj.weight": {
+      "shape": [4, 2],
+      "data": [0.2, -0.1, 0.05, 0.15, -0.2, 0.1, 0.1, 0.05]
+    },
+    "vlacpp.openpi.action_in_proj.bias": {
+      "shape": [4],
+      "data": [0.01, -0.02, 0.03, -0.04]
+    },
+    "vlacpp.openpi.action_time_mlp_in.weight": {
+      "shape": [4, 8],
+      "data": [
+        0.10, 0.00, 0.00, 0.00, 0.05, 0.00, 0.00, 0.00,
+        0.00, 0.10, 0.00, 0.00, 0.00, 0.05, 0.00, 0.00,
+        0.00, 0.00, 0.10, 0.00, 0.00, 0.00, 0.05, 0.00,
+        0.00, 0.00, 0.00, 0.10, 0.00, 0.00, 0.00, 0.05
+      ]
+    },
+    "vlacpp.openpi.action_time_mlp_in.bias": {
+      "shape": [4],
+      "data": [0.0, 0.01, -0.01, 0.02]
+    },
+    "vlacpp.openpi.action_time_mlp_out.weight": {
+      "shape": [4, 4],
+      "data": [
+        0.20, 0.00, 0.00, 0.00,
+        0.00, 0.20, 0.00, 0.00,
+        0.00, 0.00, 0.20, 0.00,
+        0.00, 0.00, 0.00, 0.20
+      ]
+    },
+    "vlacpp.openpi.action_time_mlp_out.bias": {
+      "shape": [4],
+      "data": [0.0, 0.0, 0.0, 0.0]
+    },
+    "vlacpp.openpi.action_out_proj.weight": {
+      "shape": [2, 4],
+      "data": [0.3, -0.1, 0.2, 0.0, -0.2, 0.25, 0.0, 0.1]
+    },
+    "vlacpp.openpi.action_out_proj.bias": {
+      "shape": [2],
+      "data": [0.01, -0.02]
+    },
+    "vlacpp.openpi.vision_projector.weight": {
+      "shape": [6, 5],
+      "data": [
+        0.01, 0.02, 0.03, 0.04, 0.05,
+        0.06, 0.07, 0.08, 0.09, 0.10,
+        0.11, 0.12, 0.13, 0.14, 0.15,
+        0.16, 0.17, 0.18, 0.19, 0.20,
+        0.21, 0.22, 0.23, 0.24, 0.25,
+        0.26, 0.27, 0.28, 0.29, 0.30
+      ]
+    },
+    "vlacpp.openpi.vision_projector.bias": {
+      "shape": [6],
+      "data": [0.0, 0.01, -0.01, 0.02, -0.02, 0.03]
+    }
+  }
+}

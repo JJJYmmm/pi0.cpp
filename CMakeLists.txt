@@ -65,6 +65,8 @@ if(VLACPP_BUILD_TESTS)
         set(VLACPP_TINY_GGUF "${CMAKE_CURRENT_BINARY_DIR}/tiny-openpi.gguf")
         set(VLACPP_ACTION_HEAD_CHECKPOINT "${CMAKE_CURRENT_SOURCE_DIR}/tests/action-head-checkpoint.json")
         set(VLACPP_ACTION_HEAD_GGUF "${CMAKE_CURRENT_BINARY_DIR}/action-head.gguf")
+        set(VLACPP_PROJECTOR_METADATA_CHECKPOINT "${CMAKE_CURRENT_SOURCE_DIR}/tests/projector-metadata-checkpoint.json")
+        set(VLACPP_PROJECTOR_METADATA_GGUF "${CMAKE_CURRENT_BINARY_DIR}/projector-metadata.gguf")
         set(VLACPP_ACTION_HEAD_SAFETENSORS "${CMAKE_CURRENT_BINARY_DIR}/action-head-openpi-names.safetensors")
         set(VLACPP_ACTION_HEAD_PREFIXED_SAFETENSORS "${CMAKE_CURRENT_BINARY_DIR}/action-head-model-prefix-openpi-names.safetensors")
         set(VLACPP_ACTION_HEAD_MANIFEST "${CMAKE_CURRENT_BINARY_DIR}/action-head-openpi-map.json")
@@ -317,6 +319,24 @@ if(VLACPP_BUILD_TESTS)
         set_tests_properties(vlacpp-action-head-cli PROPERTIES DEPENDS vlacpp-action-head-gguf-convert)
         set_tests_properties(vlacpp-action-head-gguf-inspect PROPERTIES DEPENDS vlacpp-action-head-gguf-convert)
         set_tests_properties(vlacpp-action-head-reference-compare PROPERTIES DEPENDS vlacpp-action-head-gguf-convert)
+
+        add_test(
+            NAME vlacpp-projector-metadata-convert
+            COMMAND
+                ${Python3_EXECUTABLE}
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/convert-openpi-to-gguf.py"
+                --checkpoint "${VLACPP_PROJECTOR_METADATA_CHECKPOINT}"
+                --output "${VLACPP_PROJECTOR_METADATA_GGUF}"
+        )
+        add_test(
+            NAME vlacpp-projector-metadata-check
+            COMMAND
+                ${Python3_EXECUTABLE}
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/check_projector_metadata.py"
+                --repo "${CMAKE_CURRENT_SOURCE_DIR}"
+                --model "${VLACPP_PROJECTOR_METADATA_GGUF}"
+        )
+        set_tests_properties(vlacpp-projector-metadata-check PROPERTIES DEPENDS vlacpp-projector-metadata-convert)
 
         add_test(
             NAME vlacpp-action-head-safetensors-create

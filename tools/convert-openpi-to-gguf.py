@@ -335,6 +335,7 @@ def layer_count(tensors: dict[str, dict[str, Any]], pattern: str) -> int | None:
 def infer_openpi_graph_metadata(tensors: dict[str, dict[str, Any]]) -> dict[str, int]:
     inferred: dict[str, int] = {}
     action_in = find_shape(tensors, "vlacpp.openpi.action_in_proj.weight") or find_shape(tensors, "action_in_proj.weight")
+    vision_projector = find_shape(tensors, "vlacpp.openpi.vision_projector.weight")
     patch = find_shape(
         tensors,
         "paligemma_with_expert.paligemma.model.vision_tower.vision_model.embeddings.patch_embedding.weight",
@@ -369,6 +370,9 @@ def infer_openpi_graph_metadata(tensors: dict[str, dict[str, Any]]) -> dict[str,
         inferred["openpi_vision_width"] = patch[0]
         inferred["openpi_vision_patch_height"] = patch[2]
         inferred["openpi_vision_patch_width"] = patch[3]
+    if vision_projector is not None and len(vision_projector) == 2:
+        inferred.setdefault("openpi_vision_width", vision_projector[1])
+        inferred.setdefault("openpi_language_width", vision_projector[0])
     if language_q is not None and len(language_q) == 2:
         inferred["openpi_language_width"] = language_q[1]
         inferred["openpi_language_q_out"] = language_q[0]
