@@ -1,4 +1,5 @@
 #include "models/pi0_action_expert.h"
+#include "models/pi0_action_decoder.h"
 
 #include <algorithm>
 #include <cmath>
@@ -14,6 +15,10 @@ float gelu(float x) {
     constexpr float sqrt_2_over_pi = 0.79788456080286535587989211986876f;
     constexpr float coef = 0.044715f;
     return 0.5f * x * (1.0f + std::tanh(sqrt_2_over_pi * x * (1.0f + coef * x * x)));
+}
+
+float silu(float x) {
+    return x / (1.0f + std::exp(-x));
 }
 
 std::vector<float> linear(
@@ -32,6 +37,39 @@ std::vector<float> linear(
             }
             result[static_cast<size_t>(row) * static_cast<size_t>(out) + static_cast<size_t>(col)] = value;
         }
+    }
+    return result;
+}
+
+std::vector<float> linear_add(
+    const std::vector<float> & weight,
+    const std::vector<float> & bias,
+    const std::vector<float> & input,
+    int batch,
+    int in,
+    int out) {
+    std::vector<float> result = linear(weight, input, batch, in, out);
+    for (int row = 0; row < batch; ++row) {
+        for (int col = 0; col < out; ++col) {
+            result[static_cast<size_t>(row) * static_cast<size_t>(out) + static_cast<size_t>(col)] +=
+                bias[static_cast<size_t>(col)];
+        }
+    }
+    return result;
+}
+
+std::vector<float> posemb_sincos(float time, size_t width) {
+    std::vector<float> result(width, 0.0f);
+    const size_t half = width / 2;
+    constexpr float min_period = 4.0e-3f;
+    constexpr float max_period = 4.0f;
+    constexpr float pi = 3.14159265358979323846f;
+    for (size_t i = 0; i < half; ++i) {
+        const float fraction = half == 1 ? 0.0f : static_cast<float>(i) / static_cast<float>(half - 1);
+        const float period = min_period * std::pow(max_period / min_period, fraction);
+        const float angle = time / period * 2.0f * pi;
+        result[i] = std::sin(angle);
+        result[half + i] = std::cos(angle);
     }
     return result;
 }
@@ -302,5 +340,69 @@ int main() {
         block_expected[i] += block_attention_out[i];
     }
     require_close(block_actual, block_expected);
+
+    tensors["vlacpp.openpi.action_in_proj.weight"] = tensor({1, 2}, {0.4f, -0.25f});
+    tensors["vlacpp.openpi.action_in_proj.bias"] = tensor({2}, {0.05f, -0.1f});
+    tensors["vlacpp.openpi.action_time_mlp_in.weight"] =
+        tensor({4, 2}, {0.3f, -0.2f, 0.1f, 0.4f, -0.5f, 0.2f, 0.6f, -0.1f});
+    tensors["vlacpp.openpi.action_time_mlp_in.bias"] = tensor({2}, {0.02f, -0.03f});
+    tensors["vlacpp.openpi.action_time_mlp_out.weight"] = tensor({2, 2}, {0.5f, -0.4f, 0.3f, 0.2f});
+    tensors["vlacpp.openpi.action_time_mlp_out.bias"] = tensor({2}, {0.01f, -0.02f});
+    tensors["vlacpp.openpi.action_out_proj.weight"] = tensor({2, 1}, {0.7f, -0.6f});
+    tensors["vlacpp.openpi.action_out_proj.bias"] = tensor({1}, {0.08f});
+
+    config.action_horizon = 2;
+    config.action_dim = 1;
+    vlacpp::Pi0ActionDecoder decoder(config, backend, tensors);
+    std::vector<float> velocity;
+    const std::vector<float> actions = {0.2f, -0.1f};
+    decoder.velocity_batch(0.25f, actions, {}, velocity);
+
+    std::vector<float> action_tokens =
+        linear_add(tensors["vlacpp.openpi.action_in_proj.weight"].data,
+                   tensors["vlacpp.openpi.action_in_proj.bias"].data,
+                   actions,
+                   2,
+                   1,
+                   2);
+    const std::vector<float> time_emb = posemb_sincos(0.25f, 2);
+    std::vector<float> action_time(8, 0.0f);
+    for (int row = 0; row < 2; ++row) {
+        std::copy(
+            action_tokens.begin() + static_cast<std::ptrdiff_t>(row * 2),
+            action_tokens.begin() + static_cast<std::ptrdiff_t>(row * 2 + 2),
+            action_time.begin() + static_cast<std::ptrdiff_t>(row * 4));
+        std::copy(time_emb.begin(), time_emb.end(), action_time.begin() + static_cast<std::ptrdiff_t>(row * 4 + 2));
+    }
+    std::vector<float> decoder_hidden =
+        linear_add(tensors["vlacpp.openpi.action_time_mlp_in.weight"].data,
+                   tensors["vlacpp.openpi.action_time_mlp_in.bias"].data,
+                   action_time,
+                   2,
+                   4,
+                   2);
+    for (float & value : decoder_hidden) {
+        value = silu(value);
+    }
+    std::vector<float> decoder_suffix =
+        linear_add(tensors["vlacpp.openpi.action_time_mlp_out.weight"].data,
+                   tensors["vlacpp.openpi.action_time_mlp_out.bias"].data,
+                   decoder_hidden,
+                   2,
+                   2,
+                   2);
+    std::vector<float> decoder_block;
+    const std::vector<int> decoder_positions = {0, 1};
+    expert.block_batch(0, decoder_suffix, decoder_positions, 2, 2, 1, 2, decoder_block);
+    std::vector<float> decoder_norm =
+        rms_norm(tensors["model.paligemma_with_expert.gemma_expert.model.norm.weight"].data, decoder_block, 2, 2);
+    std::vector<float> decoder_expected =
+        linear_add(tensors["vlacpp.openpi.action_out_proj.weight"].data,
+                   tensors["vlacpp.openpi.action_out_proj.bias"].data,
+                   decoder_norm,
+                   2,
+                   2,
+                   1);
+    require_close(velocity, decoder_expected);
     return 0;
 }

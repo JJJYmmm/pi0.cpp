@@ -107,7 +107,7 @@ Pi0ActionDecoder::Pi0ActionDecoder(
     const ModelConfig & config,
     const BackendConfig & backend,
     const TensorMap & tensors)
-    : config_(config), backend_(backend), tensors_(tensors) {}
+    : config_(config), backend_(backend), tensors_(tensors), action_expert_(config, backend, tensors) {}
 
 bool Pi0ActionDecoder::has_pi05_action_head() const {
     return find_tensor("vlacpp.openpi.pi05.time_mlp_in.weight") != nullptr;
@@ -115,6 +115,15 @@ bool Pi0ActionDecoder::has_pi05_action_head() const {
 
 bool Pi0ActionDecoder::has_pi0_action_head() const {
     return find_tensor("vlacpp.openpi.action_in_proj.weight") != nullptr && !has_pi05_action_head();
+}
+
+bool Pi0ActionDecoder::has_pi0_action_expert() const {
+    return has_pi0_action_head() &&
+        config_.openpi_action_expert_layers > 0 &&
+        config_.openpi_action_expert_width > 0 &&
+        config_.openpi_action_expert_q_out > 0 &&
+        config_.openpi_action_expert_kv_out > 0 &&
+        action_expert_.has_layer(0);
 }
 
 void Pi0ActionDecoder::state_context(const std::vector<float> & state, std::vector<float> & out) const {
@@ -163,6 +172,39 @@ void Pi0ActionDecoder::velocity_batch(
 
     std::vector<float> suffix_tokens;
     suffix_embeddings(time, actions, state_context, suffix_tokens);
+    const size_t suffix_count = suffix_tokens.size() / width;
+    if (suffix_tokens.size() != suffix_count * width || suffix_count < static_cast<size_t>(batch)) {
+        throw std::invalid_argument("pi0 suffix tokens have incompatible shape");
+    }
+
+    if (has_pi0_action_expert()) {
+        if (config_.openpi_action_expert_q_out % config_.openpi_action_expert_kv_out != 0) {
+            throw std::invalid_argument("pi0 action expert Q/KV widths are incompatible");
+        }
+        const int head_dim = config_.openpi_action_expert_kv_out;
+        const int heads = config_.openpi_action_expert_q_out / head_dim;
+        const int kv_heads = config_.openpi_action_expert_kv_out / head_dim;
+        std::vector<int> positions(suffix_count, 0);
+        for (size_t i = 0; i < positions.size(); ++i) {
+            positions[i] = static_cast<int>(i);
+        }
+        std::vector<float> hidden = suffix_tokens;
+        for (int layer = 0; layer < config_.openpi_action_expert_layers; ++layer) {
+            std::vector<float> next;
+            action_expert_.block_batch(
+                layer,
+                hidden,
+                positions,
+                static_cast<int>(suffix_count),
+                heads,
+                kv_heads,
+                head_dim,
+                next);
+            hidden.swap(next);
+        }
+        action_expert_.final_norm_batch(hidden, static_cast<int>(suffix_count), suffix_tokens);
+    }
+
     const size_t action_offset = state_context.empty() ? 0 : width;
     std::vector<float> action_expert_tokens(
         suffix_tokens.begin() + static_cast<std::ptrdiff_t>(action_offset),
