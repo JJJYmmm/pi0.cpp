@@ -125,6 +125,7 @@ if(VLACPP_BUILD_TESTS)
                 ${Python3_EXECUTABLE}
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/check_json_checkpoint_metadata.py"
                 "${VLACPP_OPENPI_GRAPH_DEFAULT_METADATA}"
+                --expect "model_type=pi0"
                 --expect "action_horizon=50"
                 --expect "action_dim=32"
                 --expect "openpi_action_expert_layers=1"

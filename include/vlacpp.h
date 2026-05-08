@@ -84,6 +84,7 @@ typedef struct vlacpp_openpi_graph_info {
     int32_t action_expert_kv_out;
     int32_t action_expert_mlp_width;
     int32_t action_expert_layers;
+    int32_t full_weights_present;
 } vlacpp_openpi_graph_info;
 
 VLACPP_API vlacpp_model_params vlacpp_default_model_params(void);

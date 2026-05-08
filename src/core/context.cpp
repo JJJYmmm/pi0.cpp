@@ -99,6 +99,7 @@ vlacpp_status vlacpp_model_openpi_graph_info(
     out_info->action_expert_kv_out = config.openpi_action_expert_kv_out;
     out_info->action_expert_mlp_width = config.openpi_action_expert_mlp_width;
     out_info->action_expert_layers = config.openpi_action_expert_layers;
+    out_info->full_weights_present = config.openpi_full_weights_present ? 1 : 0;
     return VLACPP_STATUS_OK;
 }
 

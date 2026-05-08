@@ -444,12 +444,16 @@ def build_metadata(args: argparse.Namespace, checkpoint: dict[str, Any]) -> dict
     source = {**checkpoint, **inferred, **metadata}
     state_dim = int(source.get("state_dim", args.state_dim))
     action_dim = int(source.get("action_dim", args.action_dim))
+    default_model_type = "pi0" if "openpi_action_width" in inferred else "mock-pi0"
+    model_type = source.get("model_type", args.model_type)
+    if model_type is None:
+        model_type = default_model_type
     default_action_horizon = 50 if "openpi_action_expert_layers" in inferred else 32
     action_horizon = source.get("action_horizon", args.action_horizon)
     if action_horizon is None:
         action_horizon = default_action_horizon
     result = {
-        "model_type": source.get("model_type", args.model_type),
+        "model_type": model_type,
         "image_width": int(source.get("image_width", args.image_width)),
         "image_height": int(source.get("image_height", args.image_height)),
         "state_dim": state_dim,
@@ -601,7 +605,7 @@ def main() -> None:
     parser.add_argument("--output-format", choices=["auto", "json", "gguf"], default="auto")
     parser.add_argument("--init-tiny", action="store_true", help="create tiny reference tensors when checkpoint has metadata only")
     parser.add_argument("--tensor-map-manifest", type=Path, help="convert tensors listed in a map-openpi-tensors manifest")
-    parser.add_argument("--model-type", default="mock-pi0", choices=["mock-pi0", "pi0", "pi05"])
+    parser.add_argument("--model-type", choices=["mock-pi0", "pi0", "pi05"])
     parser.add_argument("--image-width", type=int, default=224)
     parser.add_argument("--image-height", type=int, default=224)
     parser.add_argument("--state-dim", type=int, default=32)

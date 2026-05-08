@@ -125,6 +125,39 @@ bool has_valid_vision_projector_tensors(const ModelConfig & config, const Tensor
         bias->second.data.size() == static_cast<size_t>(ne1);
 }
 
+bool has_tensor_name_or_model_prefix(const TensorMap & tensors, const std::string & name) {
+    return tensors.find(name) != tensors.end() || tensors.find("model." + name) != tensors.end();
+}
+
+bool has_full_openpi_weight_tensors(const ModelConfig & config, const TensorMap & tensors) {
+    if (config.openpi_vision_layers <= 0 ||
+        config.openpi_language_layers <= 0 ||
+        config.openpi_action_expert_layers <= 0 ||
+        !has_action_head_tensors(config, tensors) ||
+        !has_valid_vision_projector_tensors(config, tensors)) {
+        return false;
+    }
+    const int last_vision = config.openpi_vision_layers - 1;
+    const int last_language = config.openpi_language_layers - 1;
+    const int last_expert = config.openpi_action_expert_layers - 1;
+    const std::string vision_prefix =
+        "paligemma_with_expert.paligemma.model.vision_tower.vision_model.encoder.layers.";
+    const std::string language_prefix =
+        "paligemma_with_expert.paligemma.model.language_model.layers.";
+    const std::string expert_prefix =
+        "paligemma_with_expert.gemma_expert.model.layers.";
+    return
+        has_tensor_name_or_model_prefix(
+            tensors,
+            "paligemma_with_expert.paligemma.model.vision_tower.vision_model.embeddings.patch_embedding.weight") &&
+        has_tensor_name_or_model_prefix(tensors, vision_prefix + "0.self_attn.q_proj.weight") &&
+        has_tensor_name_or_model_prefix(tensors, vision_prefix + std::to_string(last_vision) + ".self_attn.q_proj.weight") &&
+        has_tensor_name_or_model_prefix(tensors, language_prefix + "0.self_attn.q_proj.weight") &&
+        has_tensor_name_or_model_prefix(tensors, language_prefix + std::to_string(last_language) + ".self_attn.q_proj.weight") &&
+        has_tensor_name_or_model_prefix(tensors, expert_prefix + "0.self_attn.q_proj.weight") &&
+        has_tensor_name_or_model_prefix(tensors, expert_prefix + std::to_string(last_expert) + ".self_attn.q_proj.weight");
+}
+
 vlacpp_status validate_pi0_tensors(const ModelConfig & config, const TensorMap & tensors) {
     if (config.model_type == "mock-pi0") {
         return VLACPP_STATUS_OK;
@@ -174,6 +207,7 @@ vlacpp_status load_model_from_path(
         if (status != VLACPP_STATUS_OK) {
             return status;
         }
+        config.openpi_full_weights_present = has_full_openpi_weight_tensors(config, tensors);
         out = make_pi0_model(std::move(config), backend, std::move(tensors));
         return VLACPP_STATUS_OK;
     }

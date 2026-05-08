@@ -38,6 +38,7 @@ struct ModelConfig {
     int openpi_action_expert_kv_out = 0;
     int openpi_action_expert_mlp_width = 0;
     int openpi_action_expert_layers = 0;
+    bool openpi_full_weights_present = false;
 };
 
 struct Tensor {

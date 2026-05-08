@@ -99,6 +99,7 @@ int main(int argc, char ** argv) {
                   << ",\n    \"action_expert_kv_out\": " << graph.action_expert_kv_out
                   << ",\n    \"action_expert_mlp_width\": " << graph.action_expert_mlp_width
                   << ",\n    \"action_expert_layers\": " << graph.action_expert_layers
+                  << ",\n    \"full_weights_present\": " << (graph.full_weights_present ? "true" : "false")
                   << "\n  }\n}\n";
         vlacpp_free_model(model);
         return 0;
