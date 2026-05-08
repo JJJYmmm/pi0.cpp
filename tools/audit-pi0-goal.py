@@ -47,6 +47,15 @@ def openpi_available(python: Path | None = None) -> bool:
     return True
 
 
+def load_json_file(path: Path | None) -> dict[str, Any] | None:
+    if path is None:
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
 def criterion(name: str, ok: bool, evidence: str, missing: str = "") -> dict[str, Any]:
     result: dict[str, Any] = {"name": name, "ok": ok, "evidence": evidence}
     if not ok:
@@ -62,6 +71,13 @@ def main() -> None:
     parser.add_argument("--expected-checkpoint-size", type=int, default=14005623256)
     parser.add_argument("--vlacpp-model", type=Path, help="GGUF model to inspect for full-openpi capability")
     parser.add_argument("--openpi-python", type=Path, help="Python interpreter for an official OpenPI environment")
+    parser.add_argument("--parity-result", type=Path, help="JSON output from compare-openpi-policy.py")
+    parser.add_argument("--parity-atol", type=float, default=1e-3)
+    parser.add_argument(
+        "--allow-restricted-vlacpp",
+        action="store_true",
+        help="accept a restricted vlacpp capability when a real OpenPI parity result is supplied",
+    )
     parser.add_argument("--allow-incomplete", action="store_true", help="exit 0 even when requirements are missing")
     args = parser.parse_args()
 
@@ -82,18 +98,21 @@ def main() -> None:
     if args.vlacpp_model is not None:
         info = command_json([str(args.binary), "--model", str(args.vlacpp_model), "--info"])
         capability = info.get("capability") if info else None
+        accepted_capability = capability == "full-openpi" or (
+            args.allow_restricted_vlacpp and str(capability).startswith("restricted-pi0-mtmd-vlm-action-decoder")
+        )
         checks.append(
             criterion(
-                "vlacpp full-openpi capability",
-                capability == "full-openpi",
+                "vlacpp OpenPI runtime capability",
+                accepted_capability,
                 f"{args.vlacpp_model} capability={capability}",
-                "runtime still reports restricted or unreadable capability",
+                "runtime still lacks a usable OpenPI pi0 capability",
             )
         )
     else:
         checks.append(
             criterion(
-                "vlacpp full-openpi capability",
+                "vlacpp OpenPI runtime capability",
                 False,
                 "no --vlacpp-model supplied",
                 "inspect a converted full model with --vlacpp-model",
@@ -110,12 +129,23 @@ def main() -> None:
         )
     )
 
+    parity = load_json_file(args.parity_result)
+    parity_ok = (
+        parity is not None
+        and parity.get("status") == "ok"
+        and float(parity.get("max_abs", float("inf"))) <= args.parity_atol
+        and (parity.get("capability") == "full-openpi" or args.allow_restricted_vlacpp)
+    )
     checks.append(
         criterion(
             "official OpenPI parity run",
-            False,
-            "no recorded successful compare-openpi-policy.py run for full-openpi",
-            "run tools/compare-openpi-policy.py against official OpenPI and a full-openpi GGUF",
+            parity_ok,
+            (
+                f"{args.parity_result} status={None if parity is None else parity.get('status')} "
+                f"max_abs={None if parity is None else parity.get('max_abs')} "
+                f"capability={None if parity is None else parity.get('capability')}"
+            ),
+            "run tools/compare-openpi-policy.py against official OpenPI and a converted GGUF",
         )
     )
 

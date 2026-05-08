@@ -110,6 +110,7 @@ def run_openpi_pytorch_prefix(args: argparse.Namespace, obs: dict[str, Any], noi
         from safetensors import safe_open
 
         from openpi.models import model as openpi_model
+        from openpi.models import tokenizer as openpi_tokenizer
         from openpi.models_pytorch import pi0_pytorch
         from openpi.training import config as train_config
     except ImportError as exc:
@@ -168,14 +169,21 @@ def run_openpi_pytorch_prefix(args: argparse.Namespace, obs: dict[str, Any], noi
     state = np.asarray(obs[args.state_key], dtype=np.float32)
     if state.shape != (cfg.model.action_dim,):
         raise SystemExit(f"state shape mismatch: expected {(cfg.model.action_dim,)} got {state.shape}")
+    prompt = str(obs.get(args.prompt_key, args.prompt))
+    if prompt:
+        tokenizer = openpi_tokenizer.PaligemmaTokenizer(cfg.model.max_token_len)
+        tokenized_prompt, tokenized_prompt_mask = tokenizer.tokenize(prompt)
+    else:
+        tokenized_prompt = np.zeros((cfg.model.max_token_len,), dtype=np.int64)
+        tokenized_prompt_mask = np.zeros((cfg.model.max_token_len,), dtype=bool)
 
     observation = openpi_model.Observation.from_dict(
         {
             "image": image_dict,
             "image_mask": image_mask,
             "state": torch.as_tensor(state, dtype=torch.float32, device=device).unsqueeze(0),
-            "tokenized_prompt": torch.zeros((1, cfg.model.max_token_len), dtype=torch.long, device=device),
-            "tokenized_prompt_mask": torch.zeros((1, cfg.model.max_token_len), dtype=torch.bool, device=device),
+            "tokenized_prompt": torch.as_tensor(tokenized_prompt, dtype=torch.long, device=device).unsqueeze(0),
+            "tokenized_prompt_mask": torch.as_tensor(tokenized_prompt_mask, dtype=torch.bool, device=device).unsqueeze(0),
         }
     )
     noise_tensor = torch.as_tensor(noise, dtype=torch.float32, device=device).unsqueeze(0)
@@ -279,7 +287,18 @@ def main() -> None:
     max_abs = float(np.max(np.abs(openpi_actions - vlacpp_actions)))
     if max_abs > args.atol:
         raise SystemExit(f"compare failed: max_abs={max_abs:g} atol={args.atol:g}")
-    print(json.dumps({"status": "ok", "max_abs": max_abs, "shape": list(vlacpp_actions.shape)}, indent=2))
+    print(
+        json.dumps(
+            {
+                "status": "ok",
+                "max_abs": max_abs,
+                "shape": list(vlacpp_actions.shape),
+                "capability": capability,
+                "openpi_loader": args.openpi_loader,
+            },
+            indent=2,
+        )
+    )
 
 
 if __name__ == "__main__":
