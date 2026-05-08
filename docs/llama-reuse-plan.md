@@ -30,6 +30,8 @@ Implication for pi0:
 - Use the linked `ggml` and `mtmd` targets for the first C++ graph builder.
 - Reuse the mtmd SigLIP/ViT source and public library boundary for the image
   encoder while preserving the existing vlacpp C ABI.
+- Keep the OpenPI/PaliGemma `multi_modal_projector.linear` as a direct ggml
+  projection unless/until the exact mtmd projector path is proven equivalent.
 - Keep conversion on the llama.cpp `gguf-py` writer path and add only
   OpenPI-specific tensor naming/metadata logic in this repo.
 - Keep OpenPI-specific observation preprocessing, action head wiring, flow

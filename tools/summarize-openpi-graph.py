@@ -70,6 +70,10 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
         rows,
         "paligemma_with_expert.paligemma.model.vision_tower.vision_model.embeddings.patch_embedding.weight",
     )
+    vision_projector = find_shape(
+        rows,
+        "paligemma_with_expert.paligemma.model.multi_modal_projector.linear.weight",
+    )
     language_q = find_shape(
         rows,
         "paligemma_with_expert.paligemma.model.language_model.layers.0.self_attn.q_proj.weight",
@@ -120,6 +124,11 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
             **layer_summary(vision_layers),
             "width": patch[0] if patch else None,
             "patch": patch[2:] if patch and len(patch) == 4 else None,
+        },
+        "vision_projector": {
+            "out": vision_projector[0] if vision_projector else None,
+            "in": vision_projector[1] if vision_projector and len(vision_projector) == 2 else None,
+            "present": vision_projector is not None,
         },
         "language_model": {
             **layer_summary(language_layers),

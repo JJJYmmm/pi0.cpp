@@ -120,6 +120,7 @@ if(VLACPP_BUILD_TESTS)
                 "${VLACPP_OPENPI_GRAPH_MANIFEST}"
                 --repo "${CMAKE_CURRENT_SOURCE_DIR}"
                 --expect-vision-decision reuse
+                --expect-vision-projector-decision custom-direct-ggml
                 --expect-action-expert-decision custom-ggml-graph
                 --expect-action-head-decision custom-direct-ggml
         )
@@ -143,8 +144,8 @@ if(VLACPP_BUILD_TESTS)
                 --expect-family pi0-vision-mtmd
                 --expect-expected 3
                 --expect-mapped 3
-                --expect-total 14
-                --expect-unmapped 11
+                --expect-total 15
+                --expect-unmapped 12
         )
         set_tests_properties(vlacpp-pi0-vision-mtmd-summary PROPERTIES DEPENDS vlacpp-pi0-vision-mtmd-map)
         add_test(

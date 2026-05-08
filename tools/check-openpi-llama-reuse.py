@@ -45,11 +45,16 @@ def build_plan(repo: Path, graph_summary: dict[str, Any]) -> dict[str, Any]:
     require_contiguous("action_expert", graph_summary["action_expert"])
 
     vision = graph_summary["vision_tower"]
+    vision_projector = graph_summary["vision_projector"]
     action = graph_summary["action_head"]
     language = graph_summary["language_model"]
     expert = graph_summary["action_expert"]
     if vision["patch"] != [14, 14]:
         raise SystemExit(f"unexpected OpenPI vision patch: {vision['patch']}")
+    if vision_projector["present"] and vision_projector["in"] != vision["width"]:
+        raise SystemExit("vision projector input width must match vision tower width")
+    if vision_projector["present"] and vision_projector["out"] != language["width"]:
+        raise SystemExit("vision projector output width must match language model width")
     if action["width"] != expert["width"]:
         raise SystemExit("action head width must match action expert width")
     if language["kv_out"] != expert["kv_out"]:
@@ -75,6 +80,12 @@ def build_plan(repo: Path, graph_summary: dict[str, Any]) -> dict[str, Any]:
             "layers": language["count"],
             "kv_out": language["kv_out"],
         },
+        "vision_projector": {
+            "decision": "custom-direct-ggml" if vision_projector["present"] else "absent",
+            "component": "OpenPI/PaliGemma image-to-language projection",
+            "in": vision_projector["in"],
+            "out": vision_projector["out"],
+        },
         "action_expert": {
             "decision": "custom-ggml-graph",
             "component": "OpenPI expert stream and masks",
@@ -98,6 +109,7 @@ def main() -> None:
     parser.add_argument("--repo", type=Path, default=Path("."))
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--expect-vision-decision")
+    parser.add_argument("--expect-vision-projector-decision")
     parser.add_argument("--expect-action-expert-decision")
     parser.add_argument("--expect-action-head-decision")
     args = parser.parse_args()
@@ -108,6 +120,7 @@ def main() -> None:
 
     expectations = {
         "vision_tower": args.expect_vision_decision,
+        "vision_projector": args.expect_vision_projector_decision,
         "action_expert": args.expect_action_expert_decision,
         "action_head": args.expect_action_head_decision,
     }
@@ -119,6 +132,7 @@ def main() -> None:
         print(json.dumps(plan, indent=2))
         return
     print(f"vision_tower: {plan['vision_tower']['decision']} {plan['vision_tower']['component']}")
+    print(f"vision_projector: {plan['vision_projector']['decision']} {plan['vision_projector']['component']}")
     print(f"language_model: {plan['language_model']['decision']} {plan['language_model']['component']}")
     print(f"action_expert: {plan['action_expert']['decision']} {plan['action_expert']['component']}")
     print(f"action_head: {plan['action_head']['decision']} {plan['action_head']['component']}")
