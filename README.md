@@ -222,8 +222,8 @@ including an F16 safetensors conversion fixture. It verifies mapped GGUF
 metadata and norm_stats with `inspect-gguf.py`, compares the norm-stats
 action-head runtime path against the Python reference, runs a local
 `run-action-head-smoke.py` map/convert/inspect/CLI chain from OpenPI-named
-safetensors, and verifies that `--require-full` rejects restricted runtime
-subsets.
+safetensors, validates tensor inventory reporting, and verifies that
+`--require-full` rejects restricted runtime subsets.
 
 See `docs/pi0-infer-audit.md` for the current prompt-to-artifact completion
 audit and the remaining gaps before full OpenPI parity.

@@ -60,6 +60,7 @@ if(VLACPP_BUILD_TESTS)
         set(VLACPP_ACTION_HEAD_GGUF "${CMAKE_CURRENT_BINARY_DIR}/action-head.gguf")
         set(VLACPP_ACTION_HEAD_SAFETENSORS "${CMAKE_CURRENT_BINARY_DIR}/action-head-openpi-names.safetensors")
         set(VLACPP_ACTION_HEAD_MANIFEST "${CMAKE_CURRENT_BINARY_DIR}/action-head-openpi-map.json")
+        set(VLACPP_ACTION_HEAD_INVENTORY_MANIFEST "${CMAKE_CURRENT_BINARY_DIR}/action-head-openpi-inventory-map.json")
         set(VLACPP_ACTION_HEAD_MAPPED_GGUF "${CMAKE_CURRENT_BINARY_DIR}/action-head-openpi-mapped.gguf")
         set(VLACPP_ACTION_HEAD_NORM_STATS "${CMAKE_CURRENT_SOURCE_DIR}/tests/action-head-norm-stats.json")
         set(VLACPP_ACTION_HEAD_MAPPED_NORM_GGUF "${CMAKE_CURRENT_BINARY_DIR}/action-head-openpi-mapped-norm.gguf")
@@ -206,6 +207,24 @@ if(VLACPP_BUILD_TESTS)
                 --output "${VLACPP_ACTION_HEAD_MANIFEST}"
         )
         add_test(
+            NAME vlacpp-action-head-safetensors-inventory
+            COMMAND
+                ${Python3_EXECUTABLE}
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/map-openpi-tensors.py"
+                "${VLACPP_ACTION_HEAD_SAFETENSORS}"
+                --family action-expert
+                --require-complete
+                --include-inventory
+                --output "${VLACPP_ACTION_HEAD_INVENTORY_MANIFEST}"
+        )
+        add_test(
+            NAME vlacpp-action-head-safetensors-inventory-check
+            COMMAND
+                ${Python3_EXECUTABLE}
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/check_tensor_inventory.py"
+                --manifest "${VLACPP_ACTION_HEAD_INVENTORY_MANIFEST}"
+        )
+        add_test(
             NAME vlacpp-action-head-mapped-safetensors-convert
             COMMAND
                 ${Python3_EXECUTABLE}
@@ -270,6 +289,8 @@ if(VLACPP_BUILD_TESTS)
                 --seed 1
         )
         set_tests_properties(vlacpp-action-head-safetensors-map PROPERTIES DEPENDS vlacpp-action-head-safetensors-create)
+        set_tests_properties(vlacpp-action-head-safetensors-inventory PROPERTIES DEPENDS vlacpp-action-head-safetensors-create)
+        set_tests_properties(vlacpp-action-head-safetensors-inventory-check PROPERTIES DEPENDS vlacpp-action-head-safetensors-inventory)
         set_tests_properties(vlacpp-action-head-mapped-safetensors-convert PROPERTIES DEPENDS vlacpp-action-head-safetensors-map)
         set_tests_properties(vlacpp-action-head-mapped-safetensors-reference-compare PROPERTIES DEPENDS vlacpp-action-head-mapped-safetensors-convert)
         set_tests_properties(vlacpp-action-head-local-smoke PROPERTIES DEPENDS vlacpp-action-head-safetensors-create)

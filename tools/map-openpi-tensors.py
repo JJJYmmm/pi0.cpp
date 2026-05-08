@@ -60,7 +60,48 @@ def manifest_metadata(header: dict[str, Any]) -> dict[str, Any]:
     return decoded
 
 
-def build_manifest(source: str, header: dict[str, Any], mapping: dict[str, str]) -> dict[str, Any]:
+def tensor_group(name: str) -> str:
+    return name.split(".", 1)[0]
+
+
+def build_inventory(rows: list[dict[str, Any]], mapping: dict[str, str]) -> dict[str, Any]:
+    mapped_sources = set(mapping)
+    groups: dict[str, dict[str, int]] = {}
+    tensors = []
+    for row in rows:
+        name = row["name"]
+        group = tensor_group(name)
+        if group not in groups:
+            groups[group] = {"total": 0, "mapped": 0}
+        groups[group]["total"] += 1
+        mapped = name in mapped_sources
+        if mapped:
+            groups[group]["mapped"] += 1
+        item = {
+            "name": name,
+            "dtype": row["dtype"],
+            "shape": row["shape"],
+            "group": group,
+            "mapped": mapped,
+        }
+        if mapped:
+            item["target"] = mapping[name]
+        tensors.append(item)
+    return {
+        "total_tensor_count": len(rows),
+        "mapped_tensor_count": sum(1 for item in tensors if item["mapped"]),
+        "unmapped_tensor_count": sum(1 for item in tensors if not item["mapped"]),
+        "groups": groups,
+        "tensors": tensors,
+    }
+
+
+def build_manifest(
+    source: str,
+    header: dict[str, Any],
+    mapping: dict[str, str],
+    include_inventory: bool = False,
+) -> dict[str, Any]:
     rows = header["tensors"]
     by_name = {row["name"]: row for row in rows}
     mapped = []
@@ -80,7 +121,7 @@ def build_manifest(source: str, header: dict[str, Any], mapping: dict[str, str])
             }
         )
 
-    return {
+    manifest = {
         "source": source,
         "format": "vlacpp-openpi-tensor-map-v0",
         "metadata": manifest_metadata(header),
@@ -88,6 +129,9 @@ def build_manifest(source: str, header: dict[str, Any], mapping: dict[str, str])
         "missing": missing,
         "tensors": mapped,
     }
+    if include_inventory:
+        manifest["inventory"] = build_inventory(rows, mapping)
+    return manifest
 
 
 def main() -> None:
@@ -100,6 +144,7 @@ def main() -> None:
     )
     parser.add_argument("--output", type=Path)
     parser.add_argument("--require-complete", action="store_true")
+    parser.add_argument("--include-inventory", action="store_true", help="include full tensor inventory and mapped coverage")
     args = parser.parse_args()
 
     if args.family == "action-expert":
@@ -108,7 +153,7 @@ def main() -> None:
         mapping = PI05_ACTION_EXPERT_MAP
     else:
         mapping = TINY_VELOCITY_MAP
-    manifest = build_manifest(args.source, inspect_header(args.source), mapping)
+    manifest = build_manifest(args.source, inspect_header(args.source), mapping, args.include_inventory)
     if args.require_complete and manifest["missing"]:
         raise SystemExit("missing mapped tensor(s): " + ", ".join(manifest["missing"]))
 
