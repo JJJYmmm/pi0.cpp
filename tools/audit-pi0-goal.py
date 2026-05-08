@@ -29,8 +29,22 @@ def git_branch(repo: Path) -> str | None:
         return None
 
 
-def openpi_available() -> bool:
-    return importlib.util.find_spec("openpi") is not None
+def openpi_available(python: Path | None = None) -> bool:
+    if python is None:
+        return importlib.util.find_spec("openpi") is not None
+    try:
+        subprocess.check_call(
+            [
+                str(python),
+                "-c",
+                "import importlib.util; raise SystemExit(0 if importlib.util.find_spec('openpi') else 1)",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        return False
+    return True
 
 
 def criterion(name: str, ok: bool, evidence: str, missing: str = "") -> dict[str, Any]:
@@ -47,6 +61,7 @@ def main() -> None:
     parser.add_argument("--checkpoint", type=Path, default=Path("ckpts/lerobot-pi0/model.safetensors"))
     parser.add_argument("--expected-checkpoint-size", type=int, default=14005623256)
     parser.add_argument("--vlacpp-model", type=Path, help="GGUF model to inspect for full-openpi capability")
+    parser.add_argument("--openpi-python", type=Path, help="Python interpreter for an official OpenPI environment")
     parser.add_argument("--allow-incomplete", action="store_true", help="exit 0 even when requirements are missing")
     args = parser.parse_args()
 
@@ -85,12 +100,12 @@ def main() -> None:
             )
         )
 
-    has_openpi = openpi_available()
+    has_openpi = openpi_available(args.openpi_python)
     checks.append(
         criterion(
             "official OpenPI installed",
             has_openpi,
-            f"openpi_available={has_openpi}",
+            f"openpi_available={has_openpi} python={args.openpi_python or 'current'}",
             "install official OpenPI before real policy parity",
         )
     )

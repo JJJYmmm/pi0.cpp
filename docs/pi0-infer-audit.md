@@ -211,6 +211,10 @@ The ModelScope file is structurally compatible with official OpenPI after
 stripping its top-level `model.` prefix. This is a reference smoke only; it does
 not claim vlacpp parity until a `full-openpi` GGUF runtime path exists.
 
+`tools/audit-pi0-goal.py --openpi-python /tmp/openpi-src/.venv/bin/python` can
+point completion checks at this isolated OpenPI environment without changing the
+default project Python.
+
 Latest verified smoke outputs:
 
 - pi0:
