@@ -42,6 +42,17 @@ public:
         int kv_heads,
         int head_dim,
         std::vector<float> & out) const;
+    void attention_masked_batch(
+        const std::vector<float> & q,
+        const std::vector<float> & k,
+        const std::vector<float> & v,
+        const std::vector<float> & attention_mask,
+        int q_tokens,
+        int kv_tokens,
+        int heads,
+        int kv_heads,
+        int head_dim,
+        std::vector<float> & out) const;
     void rope_batch(
         const std::vector<float> & values,
         const std::vector<int> & positions,

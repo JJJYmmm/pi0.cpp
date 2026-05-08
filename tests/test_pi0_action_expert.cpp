@@ -95,12 +95,13 @@ std::vector<float> rms_norm(
     return result;
 }
 
-std::vector<float> self_attention(
+std::vector<float> attention_ref(
     const std::vector<float> & q,
     const std::vector<float> & k,
     const std::vector<float> & v,
     const std::vector<float> & mask,
-    int tokens,
+    int q_tokens,
+    int kv_tokens,
     int heads,
     int kv_heads,
     int head_dim) {
@@ -109,10 +110,10 @@ std::vector<float> self_attention(
     const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim));
     for (int head = 0; head < heads; ++head) {
         const int kv_head = head / repeat;
-        for (int tq = 0; tq < tokens; ++tq) {
-            std::vector<float> scores(static_cast<size_t>(tokens), 0.0f);
+        for (int tq = 0; tq < q_tokens; ++tq) {
+            std::vector<float> scores(static_cast<size_t>(kv_tokens), 0.0f);
             float max_score = -INFINITY;
-            for (int tk = 0; tk < tokens; ++tk) {
+            for (int tk = 0; tk < kv_tokens; ++tk) {
                 float score = 0.0f;
                 for (int dim = 0; dim < head_dim; ++dim) {
                     const size_t q_index =
@@ -126,7 +127,7 @@ std::vector<float> self_attention(
                     score += q[q_index] * k[k_index];
                 }
                 scores[static_cast<size_t>(tk)] =
-                    score * scale + (mask.empty() ? 0.0f : mask[static_cast<size_t>(tq) * tokens + tk]);
+                    score * scale + (mask.empty() ? 0.0f : mask[static_cast<size_t>(tq) * kv_tokens + tk]);
                 max_score = std::max(max_score, scores[static_cast<size_t>(tk)]);
             }
             float denom = 0.0f;
@@ -136,7 +137,7 @@ std::vector<float> self_attention(
             }
             for (int dim = 0; dim < head_dim; ++dim) {
                 float value = 0.0f;
-                for (int tk = 0; tk < tokens; ++tk) {
+                for (int tk = 0; tk < kv_tokens; ++tk) {
                     const size_t v_index =
                         (static_cast<size_t>(tk) * static_cast<size_t>(kv_heads) + static_cast<size_t>(kv_head)) *
                             static_cast<size_t>(head_dim) +
@@ -152,6 +153,18 @@ std::vector<float> self_attention(
         }
     }
     return result;
+}
+
+std::vector<float> self_attention(
+    const std::vector<float> & q,
+    const std::vector<float> & k,
+    const std::vector<float> & v,
+    const std::vector<float> & mask,
+    int tokens,
+    int heads,
+    int kv_heads,
+    int head_dim) {
+    return attention_ref(q, k, v, mask, tokens, tokens, heads, kv_heads, head_dim);
 }
 
 std::vector<float> self_attention(
@@ -317,6 +330,31 @@ int main() {
     };
     expert.self_attention_batch(attention_q, gqa_k, gqa_v, 3, 2, 1, 2, attention_core);
     require_close(attention_core, self_attention(attention_q, gqa_k, gqa_v, 3, 2, 1, 2));
+
+    const std::vector<float> prefix_q = {
+        0.2f, -0.1f, 0.5f, 0.3f,
+        -0.4f, 0.6f, 0.1f, -0.2f,
+    };
+    const std::vector<float> prefix_k = {
+        -0.2f, 0.4f,
+        0.6f, -0.1f,
+        -0.3f, 0.8f,
+        0.2f, 0.7f,
+    };
+    const std::vector<float> prefix_v = {
+        0.9f, -0.6f,
+        -0.5f, 0.3f,
+        0.1f, 0.4f,
+        0.8f, -0.7f,
+    };
+    const std::vector<float> prefix_mask = {
+        0.0f, 0.0f, -INFINITY, -INFINITY,
+        0.0f, 0.0f, 0.0f, 0.0f,
+    };
+    expert.attention_masked_batch(prefix_q, prefix_k, prefix_v, prefix_mask, 2, 4, 2, 1, 2, attention_core);
+    require_close(
+        attention_core,
+        attention_ref(prefix_q, prefix_k, prefix_v, prefix_mask, 2, 4, 2, 1, 2));
 
     std::vector<float> attention_out;
     const std::vector<float> attention_values = {0.25f, -0.5f, 0.75f, 1.0f, -1.0f, 0.5f, 0.0f, 0.2f};

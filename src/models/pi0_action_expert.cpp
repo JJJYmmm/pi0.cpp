@@ -235,17 +235,32 @@ void Pi0ActionExpert::self_attention_masked_batch(
     int kv_heads,
     int head_dim,
     std::vector<float> & out) const {
-    if (tokens <= 0 || heads <= 0 || kv_heads <= 0 || head_dim <= 0 || heads % kv_heads != 0) {
+    attention_masked_batch(q, k, v, attention_mask, tokens, tokens, heads, kv_heads, head_dim, out);
+}
+
+void Pi0ActionExpert::attention_masked_batch(
+    const std::vector<float> & q,
+    const std::vector<float> & k,
+    const std::vector<float> & v,
+    const std::vector<float> & attention_mask,
+    int q_tokens,
+    int kv_tokens,
+    int heads,
+    int kv_heads,
+    int head_dim,
+    std::vector<float> & out) const {
+    if (q_tokens <= 0 || kv_tokens <= 0 || heads <= 0 || kv_heads <= 0 || head_dim <= 0 || heads % kv_heads != 0) {
         throw std::invalid_argument("invalid pi0 action expert attention dimensions");
     }
     const size_t q_size =
-        static_cast<size_t>(tokens) * static_cast<size_t>(heads) * static_cast<size_t>(head_dim);
+        static_cast<size_t>(q_tokens) * static_cast<size_t>(heads) * static_cast<size_t>(head_dim);
     const size_t kv_size =
-        static_cast<size_t>(tokens) * static_cast<size_t>(kv_heads) * static_cast<size_t>(head_dim);
+        static_cast<size_t>(kv_tokens) * static_cast<size_t>(kv_heads) * static_cast<size_t>(head_dim);
     if (q.size() != q_size || k.size() != kv_size || v.size() != kv_size) {
         throw std::invalid_argument("action expert attention inputs must have matching Q/K/V shape");
     }
-    if (!attention_mask.empty() && attention_mask.size() != static_cast<size_t>(tokens) * static_cast<size_t>(tokens)) {
+    if (!attention_mask.empty() &&
+        attention_mask.size() != static_cast<size_t>(q_tokens) * static_cast<size_t>(kv_tokens)) {
         throw std::invalid_argument("action expert attention mask has incompatible shape");
     }
 
@@ -260,20 +275,21 @@ void Pi0ActionExpert::self_attention_masked_batch(
         throw std::runtime_error("failed to initialize ggml context");
     }
 
-    ggml_tensor * q_cur = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, head_dim, heads, tokens);
-    ggml_tensor * k_cur = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, head_dim, kv_heads, tokens);
-    ggml_tensor * v_cur = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, head_dim, kv_heads, tokens);
+    ggml_tensor * q_cur = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, head_dim, heads, q_tokens);
+    ggml_tensor * k_cur = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, head_dim, kv_heads, kv_tokens);
+    ggml_tensor * v_cur = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, head_dim, kv_heads, kv_tokens);
     ggml_tensor * kq_mask = nullptr;
     std::memcpy(ggml_get_data_f32(q_cur), q.data(), q.size() * sizeof(float));
     std::memcpy(ggml_get_data_f32(k_cur), k.data(), k.size() * sizeof(float));
     std::memcpy(ggml_get_data_f32(v_cur), v.data(), v.size() * sizeof(float));
     if (!attention_mask.empty()) {
-        kq_mask = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, tokens, tokens, 1);
+        kq_mask = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, kv_tokens, q_tokens, 1);
         std::memcpy(ggml_get_data_f32(kq_mask), attention_mask.data(), attention_mask.size() * sizeof(float));
     }
     if (kv_heads != heads) {
-        k_cur = ggml_repeat(ctx, k_cur, q_cur);
-        v_cur = ggml_repeat(ctx, v_cur, q_cur);
+        ggml_tensor * kv_repeat_shape = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, head_dim, heads, kv_tokens);
+        k_cur = ggml_repeat(ctx, k_cur, kv_repeat_shape);
+        v_cur = ggml_repeat(ctx, v_cur, kv_repeat_shape);
     }
 
     ggml_tensor * q_perm = ggml_permute(ctx, q_cur, 0, 2, 1, 3);
@@ -284,7 +300,7 @@ void Pi0ActionExpert::self_attention_masked_batch(
     scores = ggml_soft_max_ext(ctx, scores, kq_mask, scale, 0.0f);
     ggml_tensor * values = ggml_mul_mat(ctx, v_perm, scores);
     ggml_tensor * y = ggml_permute(ctx, values, 0, 2, 1, 3);
-    y = ggml_cont_2d(ctx, y, static_cast<int64_t>(head_dim) * heads, tokens);
+    y = ggml_cont_2d(ctx, y, static_cast<int64_t>(head_dim) * heads, q_tokens);
 
     ggml_cgraph * graph = ggml_new_graph(ctx);
     ggml_build_forward_expand(graph, y);
