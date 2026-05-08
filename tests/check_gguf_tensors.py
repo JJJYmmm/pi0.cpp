@@ -11,15 +11,15 @@ from pathlib import Path
 
 
 EXPECTED_ACTION_HEAD = {
-    "vlacpp.openpi.state_proj.weight": [4, 2],
+    "vlacpp.openpi.state_proj.weight": [2, 4],
     "vlacpp.openpi.state_proj.bias": [4],
-    "vlacpp.openpi.action_in_proj.weight": [4, 2],
+    "vlacpp.openpi.action_in_proj.weight": [2, 4],
     "vlacpp.openpi.action_in_proj.bias": [4],
-    "vlacpp.openpi.action_time_mlp_in.weight": [4, 8],
+    "vlacpp.openpi.action_time_mlp_in.weight": [8, 4],
     "vlacpp.openpi.action_time_mlp_in.bias": [4],
     "vlacpp.openpi.action_time_mlp_out.weight": [4, 4],
     "vlacpp.openpi.action_time_mlp_out.bias": [4],
-    "vlacpp.openpi.action_out_proj.weight": [2, 4],
+    "vlacpp.openpi.action_out_proj.weight": [4, 2],
     "vlacpp.openpi.action_out_proj.bias": [2],
 }
 

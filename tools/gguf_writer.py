@@ -42,7 +42,7 @@ def write_gguf(path: Path, metadata: dict[str, Any], tensors: dict[str, dict[str
     for name, tensor in tensors.items():
         shape = [int(dim) for dim in tensor["shape"]]
         data = np.asarray(tensor["data"], dtype=np.float32)
-        writer.add_tensor(name, data, raw_shape=list(reversed(shape)))
+        writer.add_tensor(name, data, raw_shape=shape)
     writer.write_header_to_file()
     writer.write_kv_data_to_file()
     writer.write_tensors_to_file()

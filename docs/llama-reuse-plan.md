@@ -18,6 +18,10 @@ Current verified boundary:
   a local matmul loop.
 - `tools/gguf_writer.py` uses llama.cpp's `gguf-py` `GGUFWriter` instead of a
   local hand-written GGUF serializer.
+- Converted GGUF 2D tensor shapes use ggml `ne` ordering (`ne0` is the fastest
+  varying/input dimension, `ne1` is the output row count). OpenPI source tensor
+  metadata remains `[out, in]`, but the runtime-facing GGUF shape is
+  `[in, out]`.
 
 Implication for pi0:
 

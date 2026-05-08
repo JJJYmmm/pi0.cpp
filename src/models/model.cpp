@@ -19,10 +19,10 @@ bool has_tiny_velocity_tensors(const ModelConfig & config, const TensorMap & ten
     }
     const int64_t feature_dim = static_cast<int64_t>(config.state_dim) + 3;
     return weight->second.shape.size() == 2 &&
-        weight->second.shape[0] == static_cast<int64_t>(config.action_dim) &&
-        (weight->second.shape[1] == 4 || weight->second.shape[1] == feature_dim) &&
+        weight->second.shape[1] == static_cast<int64_t>(config.action_dim) &&
+        (weight->second.shape[0] == 4 || weight->second.shape[0] == feature_dim) &&
         weight->second.data.size() ==
-            static_cast<size_t>(config.action_dim) * static_cast<size_t>(weight->second.shape[1]) &&
+            static_cast<size_t>(config.action_dim) * static_cast<size_t>(weight->second.shape[0]) &&
         time_weight->second.shape.size() == 1 &&
         time_weight->second.shape[0] == static_cast<int64_t>(config.action_dim) &&
         time_weight->second.data.size() == static_cast<size_t>(config.action_dim);
@@ -54,16 +54,16 @@ bool has_action_head_tensors(const ModelConfig & config, const TensorMap & tenso
     const Tensor & out_w = tensors.at("vlacpp.openpi.action_out_proj.weight");
     const Tensor & out_b = tensors.at("vlacpp.openpi.action_out_proj.bias");
 
-    if (in_w.shape.size() != 2 || in_w.shape[1] != config.action_dim || in_b.shape.size() != 1) {
+    if (in_w.shape.size() != 2 || in_w.shape[0] != config.action_dim || in_b.shape.size() != 1) {
         return false;
     }
-    const int64_t width = in_w.shape[0];
+    const int64_t width = in_w.shape[1];
     return in_b.shape[0] == width &&
-        time_in_w.shape.size() == 2 && time_in_w.shape[0] == width && time_in_w.shape[1] == 2 * width &&
+        time_in_w.shape.size() == 2 && time_in_w.shape[0] == 2 * width && time_in_w.shape[1] == width &&
         time_in_b.shape.size() == 1 && time_in_b.shape[0] == width &&
         time_out_w.shape.size() == 2 && time_out_w.shape[0] == width && time_out_w.shape[1] == width &&
         time_out_b.shape.size() == 1 && time_out_b.shape[0] == width &&
-        out_w.shape.size() == 2 && out_w.shape[0] == config.action_dim && out_w.shape[1] == width &&
+        out_w.shape.size() == 2 && out_w.shape[0] == width && out_w.shape[1] == config.action_dim &&
         out_b.shape.size() == 1 && out_b.shape[0] == config.action_dim;
 }
 
@@ -92,16 +92,16 @@ bool has_pi05_action_head_tensors(const ModelConfig & config, const TensorMap & 
     const Tensor & out_w = tensors.at("vlacpp.openpi.action_out_proj.weight");
     const Tensor & out_b = tensors.at("vlacpp.openpi.action_out_proj.bias");
 
-    if (in_w.shape.size() != 2 || in_w.shape[1] != config.action_dim || in_b.shape.size() != 1) {
+    if (in_w.shape.size() != 2 || in_w.shape[0] != config.action_dim || in_b.shape.size() != 1) {
         return false;
     }
-    const int64_t width = in_w.shape[0];
+    const int64_t width = in_w.shape[1];
     return in_b.shape[0] == width &&
         time_in_w.shape.size() == 2 && time_in_w.shape[0] == width && time_in_w.shape[1] == width &&
         time_in_b.shape.size() == 1 && time_in_b.shape[0] == width &&
         time_out_w.shape.size() == 2 && time_out_w.shape[0] == width && time_out_w.shape[1] == width &&
         time_out_b.shape.size() == 1 && time_out_b.shape[0] == width &&
-        out_w.shape.size() == 2 && out_w.shape[0] == config.action_dim && out_w.shape[1] == width &&
+        out_w.shape.size() == 2 && out_w.shape[0] == width && out_w.shape[1] == config.action_dim &&
         out_b.shape.size() == 1 && out_b.shape[0] == config.action_dim;
 }
 

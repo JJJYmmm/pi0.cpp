@@ -39,8 +39,8 @@ void ggml_linear_batch(
     if (weight.shape.size() != 2 || bias.shape.size() != 1) {
         throw std::invalid_argument("linear expects rank-2 weight and rank-1 bias");
     }
-    const int64_t out_dim = weight.shape[0];
-    const int64_t in_dim = weight.shape[1];
+    const int64_t in_dim = weight.shape[0];
+    const int64_t out_dim = weight.shape[1];
     if (out_dim <= 0 || in_dim <= 0 || batch <= 0 ||
         bias.shape[0] != out_dim ||
         input.size() != static_cast<size_t>(batch) * static_cast<size_t>(in_dim) ||
@@ -206,7 +206,7 @@ public:
                     float target = 0.0f;
                     float time_scale = 0.001f;
                     if (velocity_weight != nullptr) {
-                        const size_t feature_dim = static_cast<size_t>(velocity_weight->shape[1]);
+                        const size_t feature_dim = static_cast<size_t>(velocity_weight->shape[0]);
                         const size_t row = static_cast<size_t>(action_col) * feature_dim;
                         const float * active_features =
                             feature_dim == features.size() ? features.data() : legacy_features;
@@ -325,7 +325,7 @@ private:
         const Tensor & out_b = *find_tensor("vlacpp.openpi.action_out_proj.bias");
 
         const int batch = config_.action_horizon;
-        const size_t width = static_cast<size_t>(in_w.shape[0]);
+        const size_t width = static_cast<size_t>(in_w.shape[1]);
         std::vector<float> action_tokens;
         ggml_linear_batch(in_w, in_b, actions, batch, action_tokens, backend_.n_threads);
         if (!state_context.empty()) {
@@ -405,7 +405,7 @@ private:
         const Tensor & out_b = *find_tensor("vlacpp.openpi.action_out_proj.bias");
 
         const int batch = config_.action_horizon;
-        const size_t width = static_cast<size_t>(in_w.shape[0]);
+        const size_t width = static_cast<size_t>(in_w.shape[1]);
         std::vector<float> action_tokens;
         ggml_linear_batch(in_w, in_b, actions, batch, action_tokens, backend_.n_threads);
         std::vector<float> time_emb = posemb_sincos(time, width);
