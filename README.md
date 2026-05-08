@@ -28,11 +28,10 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-The tree builds without `third_party/llama.cpp` for early development. Add the
-submodule when wiring real ggml graphs:
+The tree builds without `third_party/llama.cpp` for early development. Initialize
+the submodule when wiring real ggml graphs:
 
 ```sh
-git submodule add https://github.com/ggerganov/llama.cpp.git third_party/llama.cpp
 git submodule update --init --recursive
 cmake -S . -B build -DVLACPP_USE_LLAMA_CPP=ON
 ```
