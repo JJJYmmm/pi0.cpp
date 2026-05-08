@@ -1,0 +1,21 @@
+{
+  "source": "synthetic",
+  "format": "vlacpp-openpi-tensor-map-v0",
+  "family": "pi0-full",
+  "tensors": [
+    {"source": "model.action_in_proj.weight", "target": "vlacpp.openpi.action_in_proj.weight", "dtype": "F32", "shape": [1024, 32], "data_offsets": [0, 0]},
+    {"source": "model.action_out_proj.weight", "target": "vlacpp.openpi.action_out_proj.weight", "dtype": "F32", "shape": [32, 1024], "data_offsets": [0, 0]},
+    {"source": "model.state_proj.weight", "target": "vlacpp.openpi.state_proj.weight", "dtype": "F32", "shape": [1024, 32], "data_offsets": [0, 0]},
+    {"source": "model.paligemma_with_expert.paligemma.model.vision_tower.vision_model.embeddings.patch_embedding.weight", "target": "model.paligemma_with_expert.paligemma.model.vision_tower.vision_model.embeddings.patch_embedding.weight", "dtype": "F32", "shape": [1152, 3, 14, 14], "data_offsets": [0, 0]},
+    {"source": "model.paligemma_with_expert.paligemma.model.vision_tower.vision_model.encoder.layers.0.self_attn.q_proj.weight", "target": "model.paligemma_with_expert.paligemma.model.vision_tower.vision_model.encoder.layers.0.self_attn.q_proj.weight", "dtype": "F32", "shape": [1152, 1152], "data_offsets": [0, 0]},
+    {"source": "model.paligemma_with_expert.paligemma.model.vision_tower.vision_model.encoder.layers.1.self_attn.q_proj.weight", "target": "model.paligemma_with_expert.paligemma.model.vision_tower.vision_model.encoder.layers.1.self_attn.q_proj.weight", "dtype": "F32", "shape": [1152, 1152], "data_offsets": [0, 0]},
+    {"source": "model.paligemma_with_expert.paligemma.model.language_model.layers.0.self_attn.q_proj.weight", "target": "model.paligemma_with_expert.paligemma.model.language_model.layers.0.self_attn.q_proj.weight", "dtype": "F32", "shape": [2048, 2048], "data_offsets": [0, 0]},
+    {"source": "model.paligemma_with_expert.paligemma.model.language_model.layers.0.self_attn.k_proj.weight", "target": "model.paligemma_with_expert.paligemma.model.language_model.layers.0.self_attn.k_proj.weight", "dtype": "F32", "shape": [256, 2048], "data_offsets": [0, 0]},
+    {"source": "model.paligemma_with_expert.paligemma.model.language_model.layers.0.mlp.down_proj.weight", "target": "model.paligemma_with_expert.paligemma.model.language_model.layers.0.mlp.down_proj.weight", "dtype": "F32", "shape": [2048, 16384], "data_offsets": [0, 0]},
+    {"source": "model.paligemma_with_expert.paligemma.model.language_model.layers.1.self_attn.q_proj.weight", "target": "model.paligemma_with_expert.paligemma.model.language_model.layers.1.self_attn.q_proj.weight", "dtype": "F32", "shape": [2048, 2048], "data_offsets": [0, 0]},
+    {"source": "model.paligemma_with_expert.gemma_expert.model.layers.0.self_attn.q_proj.weight", "target": "model.paligemma_with_expert.gemma_expert.model.layers.0.self_attn.q_proj.weight", "dtype": "F32", "shape": [2048, 1024], "data_offsets": [0, 0]},
+    {"source": "model.paligemma_with_expert.gemma_expert.model.layers.0.self_attn.k_proj.weight", "target": "model.paligemma_with_expert.gemma_expert.model.layers.0.self_attn.k_proj.weight", "dtype": "F32", "shape": [256, 1024], "data_offsets": [0, 0]},
+    {"source": "model.paligemma_with_expert.gemma_expert.model.layers.0.mlp.down_proj.weight", "target": "model.paligemma_with_expert.gemma_expert.model.layers.0.mlp.down_proj.weight", "dtype": "F32", "shape": [1024, 4096], "data_offsets": [0, 0]},
+    {"source": "model.paligemma_with_expert.gemma_expert.model.layers.1.self_attn.q_proj.weight", "target": "model.paligemma_with_expert.gemma_expert.model.layers.1.self_attn.q_proj.weight", "dtype": "F32", "shape": [2048, 1024], "data_offsets": [0, 0]}
+  ]
+}

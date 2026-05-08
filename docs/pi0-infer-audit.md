@@ -37,6 +37,9 @@ Expected CTest coverage:
   a fake package, including default rejection of restricted vlacpp models and
   the explicit `--allow-restricted-vlacpp` subset-test override.
 - `vlacpp-official-openpi-compare-skip`: explicit skipped result when official OpenPI is not installed.
+- `vlacpp-openpi-graph-summary`: `summarize-openpi-graph.py` extracts action
+  width/dimension and backbone layer counts from a full OpenPI-style manifest,
+  including ModelScope-style `model.` prefixes.
 - `vlacpp-action-head-gguf-convert`: small mapped action-head JSON checkpoint to GGUF.
 - `vlacpp-action-head-cli`: action-head GGUF runtime shape/finite smoke.
 - `vlacpp-action-head-gguf-inspect`: GGUF tensor name/shape inspection.
@@ -170,6 +173,9 @@ Latest verified smoke outputs:
   the action-head mapper now aliases those prefixed tensor names, and a
   range-read restricted GGUF smoke produced `horizon=32`, `action_dim=32`, and
   capability `restricted-pi0-state-action-head`.
+  `summarize-openpi-graph.py` on the same ModelScope source reports action
+  width 1024, action_dim 32, 27 contiguous vision tower layers, 18 contiguous
+  PaliGemma language layers, and 18 contiguous action expert layers.
 - pi0.5:
   `hf://Tacoin/openpi-pi0.5-libero-onnx/checkpoints/pi05_libero_pytorch/model.safetensors`,
   `tensor_count=8`, `action_count=320`, first actions
@@ -197,6 +203,9 @@ Latest verified smoke outputs:
 - Runtime does not implement SigLIP image encoder, PaliGemma/Gemma prefix/suffix
   transformer, KV cache execution, or full pi0.5 AdaRMS conditioning. The
   restricted pi0.5 path only approximates the time-conditioned action head.
+- `tools/summarize-openpi-graph.py` now identifies the graph dimensions needed
+  for that implementation from a full tensor manifest/source, but it is only a
+  planning/introspection tool and does not execute the graph.
 - `tools/compare-openpi-policy.py` has a real official OpenPI API path and an
   explicit missing-OpenPI skip mode. It rejects restricted vlacpp models unless
   `--allow-restricted-vlacpp` is passed for harness tests, but it has not been

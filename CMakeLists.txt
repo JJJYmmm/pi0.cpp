@@ -83,6 +83,19 @@ if(VLACPP_BUILD_TESTS)
         set(VLACPP_TINY_SAFETENSORS_GGUF "${CMAKE_CURRENT_BINARY_DIR}/tiny-openpi-safetensors.gguf")
         set(VLACPP_PI05_F16_SAFETENSORS "${CMAKE_CURRENT_BINARY_DIR}/pi05-action-head-f16.safetensors")
         set(VLACPP_PI05_F16_GGUF "${CMAKE_CURRENT_BINARY_DIR}/pi05-action-head-f16.gguf")
+        set(VLACPP_OPENPI_GRAPH_MANIFEST "${CMAKE_CURRENT_SOURCE_DIR}/tests/openpi-graph-manifest.json")
+        add_test(
+            NAME vlacpp-openpi-graph-summary
+            COMMAND
+                ${Python3_EXECUTABLE}
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/summarize-openpi-graph.py"
+                "${VLACPP_OPENPI_GRAPH_MANIFEST}"
+                --expect-action-dim 32
+                --expect-action-width 1024
+                --expect-vision-layers 2
+                --expect-language-layers 2
+                --expect-action-expert-layers 2
+        )
         add_test(
             NAME vlacpp-tiny-gguf-convert
             COMMAND

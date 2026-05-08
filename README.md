@@ -264,6 +264,10 @@ header, but alias the currently supported action/state head tensors to the
 runtime's `vlacpp.openpi.*` names. This lets a full-checkpoint GGUF preserve
 backbone tensors for future ggml graph work while still exercising the
 implemented restricted action-head path.
+Use `tools/summarize-openpi-graph.py` on a full manifest or remote safetensors
+source to extract the graph dimensions needed by a llama.cpp/ggml implementation:
+action width/dimension, vision tower layers and patch size, PaliGemma language
+layers, and action expert layers.
 
 See `docs/pi0-infer-audit.md` for the current prompt-to-artifact completion
 audit and the remaining gaps before full OpenPI parity.
