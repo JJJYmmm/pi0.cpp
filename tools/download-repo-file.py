@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import os
 import shutil
 import time
+from contextlib import contextmanager
 from pathlib import Path
 from urllib.request import Request, urlopen
 
@@ -31,39 +33,58 @@ def remote_size(url: str) -> int | None:
         return int(length) if length is not None else None
 
 
+@contextmanager
+def output_lock(output: Path):
+    lock = output.with_name(output.name + ".lock")
+    try:
+        fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError as exc:
+        raise SystemExit(f"download already in progress for {output}: lock file exists at {lock}") from exc
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(f"pid={os.getpid()}\n")
+        yield
+    finally:
+        try:
+            lock.unlink()
+        except FileNotFoundError:
+            pass
+
+
 def download(url: str, output: Path, retries: int, chunk_size: int) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
-    expected = remote_size(url)
-    existing = output.stat().st_size if output.exists() else 0
-    if expected is not None and existing == expected:
-        print(f"complete: {output} ({existing} bytes)")
-        return
-    if expected is not None and existing > expected:
-        raise SystemExit(f"local file is larger than remote file: {existing} > {expected}")
+    with output_lock(output):
+        expected = remote_size(url)
+        existing = output.stat().st_size if output.exists() else 0
+        if expected is not None and existing == expected:
+            print(f"complete: {output} ({existing} bytes)")
+            return
+        if expected is not None and existing > expected:
+            raise SystemExit(f"local file is larger than remote file: {existing} > {expected}")
 
-    for attempt in range(retries):
-        headers = {}
-        mode = "wb"
-        if existing > 0:
-            headers["Range"] = f"bytes={existing}-"
-            mode = "ab"
-        try:
-            with urlopen(Request(url, headers=headers), timeout=60) as response:
-                if existing > 0 and response.status == 200:
-                    raise RuntimeError("server ignored resume Range request")
-                with output.open(mode + "") as handle:
-                    shutil.copyfileobj(response, handle, length=chunk_size)
-            break
-        except Exception:
-            if attempt == retries - 1:
-                raise
-            existing = output.stat().st_size if output.exists() else 0
-            time.sleep(1.0 * (attempt + 1))
+        for attempt in range(retries):
+            headers = {}
+            mode = "wb"
+            if existing > 0:
+                headers["Range"] = f"bytes={existing}-"
+                mode = "ab"
+            try:
+                with urlopen(Request(url, headers=headers), timeout=60) as response:
+                    if existing > 0 and response.status == 200:
+                        raise RuntimeError("server ignored resume Range request")
+                    with output.open(mode + "") as handle:
+                        shutil.copyfileobj(response, handle, length=chunk_size)
+                break
+            except Exception:
+                if attempt == retries - 1:
+                    raise
+                existing = output.stat().st_size if output.exists() else 0
+                time.sleep(1.0 * (attempt + 1))
 
-    final = output.stat().st_size
-    if expected is not None and final != expected:
-        raise SystemExit(f"incomplete download: {final}/{expected} bytes")
-    print(f"downloaded: {output} ({final} bytes)")
+        final = output.stat().st_size
+        if expected is not None and final != expected:
+            raise SystemExit(f"incomplete download: {final}/{expected} bytes")
+        print(f"downloaded: {output} ({final} bytes)")
 
 
 def main() -> None:

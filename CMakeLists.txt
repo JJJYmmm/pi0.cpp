@@ -270,6 +270,14 @@ if(VLACPP_BUILD_TESTS)
                 --vlacpp-model "/tmp/not-used.gguf"
                 --allow-missing-openpi
         )
+        add_test(
+            NAME vlacpp-download-lock
+            COMMAND
+                ${Python3_EXECUTABLE}
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/check_download_lock.py"
+                --repo "${CMAKE_CURRENT_SOURCE_DIR}"
+                --work-dir "${CMAKE_CURRENT_BINARY_DIR}/download-lock"
+        )
 
         add_test(
             NAME vlacpp-action-head-gguf-convert
