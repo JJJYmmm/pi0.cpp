@@ -96,6 +96,17 @@ if(VLACPP_BUILD_TESTS)
                 --expect-language-layers 2
                 --expect-action-expert-layers 2
         )
+        if(VLACPP_USE_LLAMA_CPP AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/llama.cpp/CMakeLists.txt")
+            add_test(
+                NAME vlacpp-llama-components
+                COMMAND
+                    ${Python3_EXECUTABLE}
+                    "${CMAKE_CURRENT_SOURCE_DIR}/tools/check-llama-components.py"
+                    --repo "${CMAKE_CURRENT_SOURCE_DIR}"
+                    --build-dir "${CMAKE_CURRENT_BINARY_DIR}"
+                    --require-ggml-targets
+            )
+        endif()
         add_test(
             NAME vlacpp-tiny-gguf-convert
             COMMAND

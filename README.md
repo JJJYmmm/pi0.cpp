@@ -273,7 +273,8 @@ builder can consume dimensions without rescanning the original checkpoint.
 metadata from the loaded model.
 
 See `docs/pi0-infer-audit.md` for the current prompt-to-artifact completion
-audit and the remaining gaps before full OpenPI parity.
+audit and `docs/llama-reuse-plan.md` for the current llama.cpp/ggml reuse
+boundary before full OpenPI parity.
 
 ## Reference Architecture
 

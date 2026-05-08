@@ -41,6 +41,9 @@ Expected CTest coverage:
 - `vlacpp-openpi-graph-summary`: `summarize-openpi-graph.py` extracts action
   width/dimension and backbone layer counts from a full OpenPI-style manifest,
   including ModelScope-style `model.` prefixes.
+- `vlacpp-llama-components`: when the llama.cpp submodule is present, verifies
+  the expected ggml/llama CMake targets and SigLIP/mtmd source files are
+  available for the next graph integration step.
 - `vlacpp-action-head-gguf-convert`: small mapped action-head JSON checkpoint to GGUF.
 - `vlacpp-action-head-cli`: action-head GGUF runtime shape/finite smoke.
 - `vlacpp-action-head-gguf-inspect`: GGUF tensor name/shape inspection.
