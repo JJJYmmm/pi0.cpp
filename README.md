@@ -269,7 +269,9 @@ Implementation should track these upstream designs:
 
 1. Refactor `tools/convert-openpi-to-gguf.py` toward the llama.cpp converter
    pattern: OpenPI config/tensor mapping in this repo, GGUF writing through a
-   reusable writer module instead of hand-coded container emission.
+   reusable writer module instead of converter-local container emission. The
+   current writer is `tools/gguf_writer.py`; it is intentionally small so it can
+   later be replaced by, or aligned more closely with, llama.cpp's GGUF writer.
 2. Expand openpi tensor collection from the tiny velocity/action-head subsets to
    full pi0/pi0.5 manifests that preserve backbone tensors and runtime aliases.
 3. Wire SigLIP/PaliGemma/Gemma execution through ggml/llama.cpp-style graph
