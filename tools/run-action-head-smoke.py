@@ -13,6 +13,7 @@ from pathlib import Path
 
 
 DEFAULT_PI0_SOURCE = "hf://maxqualia/openpi-pi0-corkinbox100-1882950e/model.safetensors"
+DEFAULT_PI0_MODELSCOPE_SOURCE = "ms://lerobot/pi0/model.safetensors"
 DEFAULT_PI05_SOURCE = "hf://Tacoin/openpi-pi0.5-libero-onnx/checkpoints/pi05_libero_pytorch/model.safetensors"
 DEFAULT_PI05_CONFIG = "hf://Tacoin/openpi-pi0.5-libero-onnx/checkpoints/pi05_libero_pytorch/config.json"
 DEFAULT_PI05_NORM_STATS = "hf://Tacoin/openpi-pi0.5-libero-onnx/assets/physical-intelligence/libero/norm_stats.json"
@@ -25,7 +26,7 @@ def run(command: list[str]) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo", type=Path, default=Path(__file__).resolve().parents[1])
-    parser.add_argument("--family", choices=["pi0", "pi05"], default="pi0")
+    parser.add_argument("--family", choices=["pi0", "pi0-action-projector", "pi05"], default="pi0")
     parser.add_argument("--source")
     parser.add_argument("--config", help="optional OpenPI config JSON, local path or hf:// URI")
     parser.add_argument("--norm-stats", help="optional OpenPI norm_stats JSON, local path or hf:// URI")
@@ -45,11 +46,23 @@ def main() -> None:
         work_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        source = args.source or (DEFAULT_PI05_SOURCE if args.family == "pi05" else DEFAULT_PI0_SOURCE)
+        if args.source is not None:
+            source = args.source
+        elif args.family == "pi05":
+            source = DEFAULT_PI05_SOURCE
+        elif args.family == "pi0-action-projector":
+            source = DEFAULT_PI0_MODELSCOPE_SOURCE
+        else:
+            source = DEFAULT_PI0_SOURCE
         config = args.config or (DEFAULT_PI05_CONFIG if args.family == "pi05" else None)
         norm_stats = args.norm_stats or (DEFAULT_PI05_NORM_STATS if args.family == "pi05" else None)
         action_horizon = args.action_horizon if args.action_horizon is not None else (10 if args.family == "pi05" else 32)
-        manifest_family = "pi05-action-expert" if args.family == "pi05" else "action-expert"
+        if args.family == "pi05":
+            manifest_family = "pi05-action-expert"
+        elif args.family == "pi0-action-projector":
+            manifest_family = "pi0-action-projector"
+        else:
+            manifest_family = "action-expert"
         model_type = "pi05" if args.family == "pi05" else "pi0"
 
         manifest = work_dir / "openpi-action-map.json"
@@ -92,9 +105,15 @@ def main() -> None:
             text=True,
         )
         inspect = json.loads(inspect_raw)
-        if inspect["tensor_count"] < 8:
-            raise SystemExit(f"expected at least 8 action-head tensors, got {inspect['tensor_count']}")
+        min_tensor_count = 12 if args.family == "pi0-action-projector" else 8
+        if inspect["tensor_count"] < min_tensor_count:
+            raise SystemExit(f"expected at least {min_tensor_count} tensors, got {inspect['tensor_count']}")
         metadata = inspect["metadata"]
+        if args.family == "pi0-action-projector":
+            if metadata.get("vlacpp.openpi.vision_width") != 1152:
+                raise SystemExit(f"unexpected vision width: {metadata.get('vlacpp.openpi.vision_width')}")
+            if metadata.get("vlacpp.openpi.language_width") != 2048:
+                raise SystemExit(f"unexpected language width: {metadata.get('vlacpp.openpi.language_width')}")
         state_dim = int(metadata["vlacpp.state_dim"])
         action_dim = int(metadata["vlacpp.action_dim"])
         action_horizon = int(metadata["vlacpp.action_horizon"])

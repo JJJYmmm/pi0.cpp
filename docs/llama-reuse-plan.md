@@ -30,6 +30,9 @@ Current verified boundary:
 - `tools/map-openpi-tensors.py --family pi0-action-projector` maps the real
   pi0 action decoder and PaliGemma projector subset together for combined GGUF
   smoke conversion.
+- `tools/run-action-head-smoke.py --family pi0-action-projector` runs the
+  ModelScope pi0 subset through map, GGUF conversion, projector metadata checks,
+  and restricted `vlacpp-pi0` sampling.
 
 Implication for pi0:
 
