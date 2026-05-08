@@ -53,6 +53,11 @@ PI0_RUNTIME_ALIAS_MAP = {
     **VISION_PROJECTOR_MAP,
 }
 
+PI0_ACTION_PROJECTOR_MAP = {
+    **ACTION_EXPERT_MAP,
+    **VISION_PROJECTOR_MAP,
+}
+
 VISION_PREFIX = "paligemma_with_expert.paligemma.model.vision_tower.vision_model."
 
 VISION_SUFFIX_MAP = {
@@ -284,6 +289,7 @@ def main() -> None:
             "pi05-full",
             "pi0-vision-mtmd",
             "pi0-vision-projector",
+            "pi0-action-projector",
         ],
         default="action-expert",
     )
@@ -307,6 +313,8 @@ def main() -> None:
         mapping = pi0_vision_mtmd_tensor_map(header)
     elif args.family == "pi0-vision-projector":
         mapping = resolve_runtime_aliases(header, VISION_PROJECTOR_MAP)
+    elif args.family == "pi0-action-projector":
+        mapping = resolve_runtime_aliases(header, PI0_ACTION_PROJECTOR_MAP)
     else:
         mapping = TINY_VELOCITY_MAP
     manifest = build_manifest(args.source, header, mapping, args.family, args.include_inventory)

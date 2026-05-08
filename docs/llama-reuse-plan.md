@@ -11,8 +11,9 @@ Current verified boundary:
   `tools/mtmd/models/siglip.cpp` are present in the submodule.
 - `vlacpp` links the public `mtmd` target directly; `vlacpp-mtmd-api` verifies
   the default media marker and context params at runtime.
-- `src/models/pi0.cpp` directly builds narrow F32 `ggml_mul_mat + ggml_add`
-  graphs for single and batched linear layers; the pi0/pi0.5 restricted
+- `src/models/pi0_action_decoder.cpp` directly builds narrow F32
+  `ggml_mul_mat + ggml_add` graphs for single and batched linear layers; the
+  pi0/pi0.5 restricted
   action-head forward path now runs the action horizon through ggml instead of
   a local matmul loop.
 - `tools/gguf_writer.py` uses llama.cpp's `gguf-py` `GGUFWriter` instead of a
@@ -26,9 +27,16 @@ Current verified boundary:
   `v.patch_embd.weight`, `v.position_embd.weight`, and `v.blk.*.attn_q.weight`.
 - `tools/map-openpi-tensors.py --family pi0-vision-projector` isolates
   `multi_modal_projector.linear` into `vlacpp.openpi.vision_projector.*`.
+- `tools/map-openpi-tensors.py --family pi0-action-projector` maps the real
+  pi0 action decoder and PaliGemma projector subset together for combined GGUF
+  smoke conversion.
 
 Implication for pi0:
 
+- Do not add custom operators when existing llama.cpp/ggml/mtmd graph nodes can
+  express the same computation. Before adding a new compute path, check for an
+  equivalent public ggml op or llama.cpp/mtmd helper, and otherwise compose the
+  graph directly from public ggml ops.
 - Use the linked `ggml` and `mtmd` targets for the first C++ graph builder.
 - Reuse the mtmd SigLIP/ViT source and public library boundary for the image
   encoder while preserving the existing vlacpp C ABI.

@@ -15,7 +15,7 @@ float swish(float x) {
     return x / (1.0f + std::exp(-x));
 }
 
-void compute_linear_batch(
+void run_mul_mat_add_batch(
     const Tensor & weight,
     const Tensor & bias,
     const std::vector<float> & input,
@@ -73,13 +73,13 @@ void compute_linear_batch(
     ggml_free(ctx);
 }
 
-void compute_linear(
+void run_mul_mat_add(
     const Tensor & weight,
     const Tensor & bias,
     const std::vector<float> & input,
     std::vector<float> & output,
     int n_threads) {
-    compute_linear_batch(weight, bias, input, 1, output, n_threads);
+    run_mul_mat_add_batch(weight, bias, input, 1, output, n_threads);
 }
 
 std::vector<float> posemb_sincos(float time, size_t width) {
@@ -124,7 +124,7 @@ void Pi0ActionDecoder::state_context(const std::vector<float> & state, std::vect
         out.clear();
         return;
     }
-    compute_linear(*state_w, *state_b, state, out, backend_.n_threads);
+    run_mul_mat_add(*state_w, *state_b, state, out, backend_.n_threads);
 }
 
 void Pi0ActionDecoder::velocity_batch(
@@ -140,7 +140,7 @@ void Pi0ActionDecoder::velocity_batch(
     const int batch = config_.action_horizon;
     const size_t width = static_cast<size_t>(in_w.shape[1]);
     std::vector<float> action_tokens;
-    compute_linear_batch(in_w, in_b, actions, batch, action_tokens, backend_.n_threads);
+    run_mul_mat_add_batch(in_w, in_b, actions, batch, action_tokens, backend_.n_threads);
 
     if (has_pi05_action_head()) {
         const Tensor & time_in_w = *find_tensor("vlacpp.openpi.pi05.time_mlp_in.weight");
@@ -148,12 +148,12 @@ void Pi0ActionDecoder::velocity_batch(
         const Tensor & time_out_w = *find_tensor("vlacpp.openpi.pi05.time_mlp_out.weight");
         const Tensor & time_out_b = *find_tensor("vlacpp.openpi.pi05.time_mlp_out.bias");
         std::vector<float> hidden;
-        compute_linear(time_in_w, time_in_b, posemb_sincos(time, width), hidden, backend_.n_threads);
+        run_mul_mat_add(time_in_w, time_in_b, posemb_sincos(time, width), hidden, backend_.n_threads);
         for (float & value : hidden) {
             value = swish(value);
         }
         std::vector<float> time_context;
-        compute_linear(time_out_w, time_out_b, hidden, time_context, backend_.n_threads);
+        run_mul_mat_add(time_out_w, time_out_b, hidden, time_context, backend_.n_threads);
         for (float & value : time_context) {
             value = swish(value);
         }
@@ -163,7 +163,7 @@ void Pi0ActionDecoder::velocity_batch(
                 action_tokens[offset + i] += time_context[i];
             }
         }
-        compute_linear_batch(out_w, out_b, action_tokens, batch, out, backend_.n_threads);
+        run_mul_mat_add_batch(out_w, out_b, action_tokens, batch, out, backend_.n_threads);
         return;
     }
 
@@ -194,16 +194,16 @@ void Pi0ActionDecoder::velocity_batch(
             action_time.begin() + static_cast<std::ptrdiff_t>(dst + width));
     }
     std::vector<float> hidden;
-    compute_linear_batch(time_in_w, time_in_b, action_time, batch, hidden, backend_.n_threads);
+    run_mul_mat_add_batch(time_in_w, time_in_b, action_time, batch, hidden, backend_.n_threads);
     for (float & value : hidden) {
         value = swish(value);
     }
     std::vector<float> mixed;
-    compute_linear_batch(time_out_w, time_out_b, hidden, batch, mixed, backend_.n_threads);
+    run_mul_mat_add_batch(time_out_w, time_out_b, hidden, batch, mixed, backend_.n_threads);
     for (float & value : mixed) {
         value = swish(value);
     }
-    compute_linear_batch(out_w, out_b, mixed, batch, out, backend_.n_threads);
+    run_mul_mat_add_batch(out_w, out_b, mixed, batch, out, backend_.n_threads);
 }
 
 const Tensor * Pi0ActionDecoder::find_tensor(const std::string & name) const {
