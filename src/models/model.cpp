@@ -193,12 +193,46 @@ bool has_valid_action_expert_tensors(const ModelConfig & config, const TensorMap
     return true;
 }
 
+bool has_valid_language_tensors(const ModelConfig & config, const TensorMap & tensors) {
+    if (config.openpi_language_layers <= 0 ||
+        config.openpi_language_width <= 0 ||
+        config.openpi_language_q_out <= 0 ||
+        config.openpi_language_kv_out <= 0 ||
+        config.openpi_language_mlp_width <= 0) {
+        return false;
+    }
+    const int64_t width = config.openpi_language_width;
+    const int64_t q_out = config.openpi_language_q_out;
+    const int64_t kv_out = config.openpi_language_kv_out;
+    const int64_t mlp = config.openpi_language_mlp_width;
+    const std::string prefix = "paligemma_with_expert.paligemma.model.language_model.layers.";
+    if (!has_tensor_shape(tensors, "paligemma_with_expert.paligemma.model.language_model.norm.weight", {width})) {
+        return false;
+    }
+    for (int layer = 0; layer < config.openpi_language_layers; ++layer) {
+        const std::string base = prefix + std::to_string(layer) + ".";
+        if (!has_tensor_shape(tensors, base + "input_layernorm.weight", {width}) ||
+            !has_tensor_shape(tensors, base + "post_attention_layernorm.weight", {width}) ||
+            !has_tensor_shape(tensors, base + "self_attn.q_proj.weight", {width, q_out}) ||
+            !has_tensor_shape(tensors, base + "self_attn.k_proj.weight", {width, kv_out}) ||
+            !has_tensor_shape(tensors, base + "self_attn.v_proj.weight", {width, kv_out}) ||
+            !has_tensor_shape(tensors, base + "self_attn.o_proj.weight", {q_out, width}) ||
+            !has_tensor_shape(tensors, base + "mlp.gate_proj.weight", {width, mlp}) ||
+            !has_tensor_shape(tensors, base + "mlp.up_proj.weight", {width, mlp}) ||
+            !has_tensor_shape(tensors, base + "mlp.down_proj.weight", {mlp, width})) {
+            return false;
+        }
+    }
+    return true;
+}
+
 bool has_full_openpi_weight_tensors(const ModelConfig & config, const TensorMap & tensors) {
     if (config.openpi_vision_layers <= 0 ||
         config.openpi_language_layers <= 0 ||
         config.openpi_action_expert_layers <= 0 ||
         !has_action_head_tensors(config, tensors) ||
         !has_valid_vision_projector_tensors(config, tensors) ||
+        !has_valid_language_tensors(config, tensors) ||
         !has_valid_action_expert_tensors(config, tensors)) {
         return false;
     }
