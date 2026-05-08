@@ -23,6 +23,14 @@ void require_weight_shape(const Tensor & tensor, int64_t ne0, int64_t ne1, const
     }
 }
 
+void require_vector_shape(const Tensor & tensor, int64_t ne0, const char * name) {
+    if (tensor.shape.size() != 1 ||
+        tensor.shape[0] != ne0 ||
+        tensor.data.size() != static_cast<size_t>(ne0)) {
+        throw std::invalid_argument(std::string(name) + " has incompatible ggml shape");
+    }
+}
+
 } // namespace
 
 Pi0ActionExpert::Pi0ActionExpert(
@@ -35,6 +43,77 @@ bool Pi0ActionExpert::has_layer(int layer) const {
     return find_tensor(layer_prefix(layer) + "mlp.gate_proj.weight") != nullptr &&
         find_tensor(layer_prefix(layer) + "mlp.up_proj.weight") != nullptr &&
         find_tensor(layer_prefix(layer) + "mlp.down_proj.weight") != nullptr;
+}
+
+void Pi0ActionExpert::input_norm_batch(
+    int layer,
+    const std::vector<float> & tokens,
+    int batch,
+    std::vector<float> & out) const {
+    norm_batch(layer, "input_layernorm.weight", tokens, batch, out);
+}
+
+void Pi0ActionExpert::post_attention_norm_batch(
+    int layer,
+    const std::vector<float> & tokens,
+    int batch,
+    std::vector<float> & out) const {
+    norm_batch(layer, "post_attention_layernorm.weight", tokens, batch, out);
+}
+
+void Pi0ActionExpert::norm_batch(
+    int layer,
+    const char * weight_name,
+    const std::vector<float> & tokens,
+    int batch,
+    std::vector<float> & out) const {
+    if (batch <= 0 || config_.openpi_action_expert_width <= 0) {
+        throw std::invalid_argument("invalid pi0 action expert norm dimensions");
+    }
+    const Tensor * norm_w = find_tensor(layer_prefix(layer) + weight_name);
+    if (norm_w == nullptr) {
+        throw std::invalid_argument("missing pi0 action expert norm tensor");
+    }
+    const int64_t width = config_.openpi_action_expert_width;
+    require_vector_shape(*norm_w, width, "action expert norm");
+    if (tokens.size() != static_cast<size_t>(batch) * static_cast<size_t>(width)) {
+        throw std::invalid_argument("action expert norm input has incompatible shape");
+    }
+
+    const size_t tensor_bytes =
+        (norm_w->data.size() + tokens.size() + static_cast<size_t>(width) * static_cast<size_t>(batch)) *
+        sizeof(float);
+    const size_t context_size = std::max<size_t>(64 * 1024 * 1024, tensor_bytes * 4 + 1024 * 1024);
+    ggml_init_params params{};
+    params.mem_size = context_size;
+    params.mem_buffer = nullptr;
+    params.no_alloc = false;
+    ggml_context * ctx = ggml_init(params);
+    if (ctx == nullptr) {
+        throw std::runtime_error("failed to initialize ggml context");
+    }
+
+    ggml_tensor * x = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, width, batch);
+    ggml_tensor * scale = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, width);
+    std::memcpy(ggml_get_data_f32(x), tokens.data(), tokens.size() * sizeof(float));
+    float * scale_data = ggml_get_data_f32(scale);
+    for (int64_t i = 0; i < width; ++i) {
+        scale_data[i] = 1.0f + norm_w->data[static_cast<size_t>(i)];
+    }
+
+    ggml_tensor * y = ggml_mul(ctx, ggml_rms_norm(ctx, x, 1.0e-6f), scale);
+    ggml_cgraph * graph = ggml_new_graph(ctx);
+    ggml_build_forward_expand(graph, y);
+    const ggml_status status = ggml_graph_compute_with_ctx(ctx, graph, std::max(1, backend_.n_threads));
+    if (status != GGML_STATUS_SUCCESS) {
+        ggml_free(ctx);
+        throw std::runtime_error("ggml action expert norm graph compute failed");
+    }
+
+    out.assign(
+        ggml_get_data_f32(y),
+        ggml_get_data_f32(y) + static_cast<size_t>(batch) * static_cast<size_t>(width));
+    ggml_free(ctx);
 }
 
 void Pi0ActionExpert::mlp_batch(

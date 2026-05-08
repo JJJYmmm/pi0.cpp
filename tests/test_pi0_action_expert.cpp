@@ -36,6 +36,27 @@ std::vector<float> linear(
     return result;
 }
 
+std::vector<float> rms_norm(
+    const std::vector<float> & weight,
+    const std::vector<float> & input,
+    int batch,
+    int width) {
+    std::vector<float> result(input.size(), 0.0f);
+    for (int row = 0; row < batch; ++row) {
+        float sum = 0.0f;
+        for (int col = 0; col < width; ++col) {
+            const float value = input[static_cast<size_t>(row) * static_cast<size_t>(width) + static_cast<size_t>(col)];
+            sum += value * value;
+        }
+        const float inv = 1.0f / std::sqrt(sum / static_cast<float>(width) + 1.0e-6f);
+        for (int col = 0; col < width; ++col) {
+            const size_t index = static_cast<size_t>(row) * static_cast<size_t>(width) + static_cast<size_t>(col);
+            result[index] = input[index] * inv * (1.0f + weight[static_cast<size_t>(col)]);
+        }
+    }
+    return result;
+}
+
 void require_close(const std::vector<float> & actual, const std::vector<float> & expected) {
     if (actual.size() != expected.size()) {
         std::cerr << "size mismatch\n";
@@ -68,10 +89,13 @@ int main() {
     vlacpp::BackendConfig backend;
     backend.n_threads = 1;
     vlacpp::TensorMap tensors;
-    const std::string prefix = "model.paligemma_with_expert.gemma_expert.model.layers.0.mlp.";
-    tensors[prefix + "gate_proj.weight"] = tensor({2, 3}, {0.2f, -0.1f, -0.3f, 0.4f, 0.1f, 0.5f});
-    tensors[prefix + "up_proj.weight"] = tensor({2, 3}, {0.6f, 0.2f, -0.2f, 0.3f, 0.4f, -0.5f});
-    tensors[prefix + "down_proj.weight"] = tensor({3, 2}, {0.3f, -0.2f, 0.1f, -0.4f, 0.2f, 0.5f});
+    const std::string layer_prefix = "model.paligemma_with_expert.gemma_expert.model.layers.0.";
+    const std::string mlp_prefix = layer_prefix + "mlp.";
+    tensors[layer_prefix + "input_layernorm.weight"] = tensor({2}, {-0.1f, 0.25f});
+    tensors[layer_prefix + "post_attention_layernorm.weight"] = tensor({2}, {0.05f, -0.2f});
+    tensors[mlp_prefix + "gate_proj.weight"] = tensor({2, 3}, {0.2f, -0.1f, -0.3f, 0.4f, 0.1f, 0.5f});
+    tensors[mlp_prefix + "up_proj.weight"] = tensor({2, 3}, {0.6f, 0.2f, -0.2f, 0.3f, 0.4f, -0.5f});
+    tensors[mlp_prefix + "down_proj.weight"] = tensor({3, 2}, {0.3f, -0.2f, 0.1f, -0.4f, 0.2f, 0.5f});
 
     const std::vector<float> input = {1.0f, -2.0f, 0.5f, 0.25f};
     vlacpp::Pi0ActionExpert expert(config, backend, tensors);
@@ -82,12 +106,19 @@ int main() {
     std::vector<float> actual;
     expert.mlp_batch(0, input, 2, actual);
 
-    std::vector<float> gate = linear(tensors[prefix + "gate_proj.weight"].data, input, 2, 2, 3);
-    std::vector<float> up = linear(tensors[prefix + "up_proj.weight"].data, input, 2, 2, 3);
+    std::vector<float> norm_actual;
+    expert.input_norm_batch(0, input, 2, norm_actual);
+    require_close(norm_actual, rms_norm(tensors[layer_prefix + "input_layernorm.weight"].data, input, 2, 2));
+
+    expert.post_attention_norm_batch(0, input, 2, norm_actual);
+    require_close(norm_actual, rms_norm(tensors[layer_prefix + "post_attention_layernorm.weight"].data, input, 2, 2));
+
+    std::vector<float> gate = linear(tensors[mlp_prefix + "gate_proj.weight"].data, input, 2, 2, 3);
+    std::vector<float> up = linear(tensors[mlp_prefix + "up_proj.weight"].data, input, 2, 2, 3);
     for (size_t i = 0; i < gate.size(); ++i) {
         gate[i] = gelu(gate[i]) * up[i];
     }
-    const std::vector<float> expected = linear(tensors[prefix + "down_proj.weight"].data, gate, 2, 3, 2);
+    const std::vector<float> expected = linear(tensors[mlp_prefix + "down_proj.weight"].data, gate, 2, 3, 2);
     require_close(actual, expected);
     return 0;
 }
