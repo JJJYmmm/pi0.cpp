@@ -444,6 +444,56 @@ void Pi0ActionExpert::mlp_batch(
     ggml_free(ctx);
 }
 
+void Pi0ActionExpert::block_batch(
+    int layer,
+    const std::vector<float> & tokens,
+    const std::vector<int> & positions,
+    int batch,
+    int heads,
+    int kv_heads,
+    int head_dim,
+    std::vector<float> & out) const {
+    const size_t width = static_cast<size_t>(config_.openpi_action_expert_width);
+    if (batch <= 0 || width == 0 || tokens.size() != static_cast<size_t>(batch) * width) {
+        throw std::invalid_argument("action expert block input has incompatible shape");
+    }
+
+    std::vector<float> normed;
+    input_norm_batch(layer, tokens, batch, normed);
+
+    std::vector<float> q;
+    std::vector<float> k;
+    std::vector<float> v;
+    qkv_batch(layer, normed, batch, q, k, v);
+
+    std::vector<float> q_rot;
+    std::vector<float> k_rot;
+    rope_batch(q, positions, batch, heads, head_dim, q_rot);
+    rope_batch(k, positions, batch, kv_heads, head_dim, k_rot);
+
+    std::vector<float> attn_values;
+    self_attention_batch(q_rot, k_rot, v, batch, heads, kv_heads, head_dim, attn_values);
+
+    std::vector<float> attn_out;
+    attention_out_batch(layer, attn_values, batch, attn_out);
+
+    std::vector<float> first_residual(tokens.size(), 0.0f);
+    for (size_t i = 0; i < first_residual.size(); ++i) {
+        first_residual[i] = tokens[i] + attn_out[i];
+    }
+
+    std::vector<float> post_norm;
+    post_attention_norm_batch(layer, first_residual, batch, post_norm);
+
+    std::vector<float> mlp_out;
+    mlp_batch(layer, post_norm, batch, mlp_out);
+
+    out.resize(first_residual.size());
+    for (size_t i = 0; i < out.size(); ++i) {
+        out[i] = first_residual[i] + mlp_out[i];
+    }
+}
+
 const Tensor * Pi0ActionExpert::find_tensor(const std::string & name) const {
     auto it = tensors_.find(name);
     if (it != tensors_.end()) {

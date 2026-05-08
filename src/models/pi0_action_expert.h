@@ -40,6 +40,15 @@ public:
         std::vector<float> & out) const;
     void attention_out_batch(int layer, const std::vector<float> & values, int batch, std::vector<float> & out) const;
     void mlp_batch(int layer, const std::vector<float> & tokens, int batch, std::vector<float> & out) const;
+    void block_batch(
+        int layer,
+        const std::vector<float> & tokens,
+        const std::vector<int> & positions,
+        int batch,
+        int heads,
+        int kv_heads,
+        int head_dim,
+        std::vector<float> & out) const;
 
 private:
     void norm_batch(

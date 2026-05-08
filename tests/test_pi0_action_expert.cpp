@@ -266,5 +266,35 @@ int main() {
     }
     const std::vector<float> expected = linear(tensors[mlp_prefix + "down_proj.weight"].data, gate, 2, 3, 2);
     require_close(actual, expected);
+
+    std::vector<float> block_actual;
+    const std::vector<int> block_positions = {0, 2};
+    expert.block_batch(0, input, block_positions, 2, 2, 1, 2, block_actual);
+
+    std::vector<float> block_norm =
+        rms_norm(tensors[layer_prefix + "input_layernorm.weight"].data, input, 2, 2);
+    std::vector<float> block_q = linear(tensors[layer_prefix + "self_attn.q_proj.weight"].data, block_norm, 2, 2, 4);
+    std::vector<float> block_k = linear(tensors[layer_prefix + "self_attn.k_proj.weight"].data, block_norm, 2, 2, 2);
+    std::vector<float> block_v = linear(tensors[layer_prefix + "self_attn.v_proj.weight"].data, block_norm, 2, 2, 2);
+    block_q = rope_neox(block_q, block_positions, 2, 2, 2);
+    block_k = rope_neox(block_k, block_positions, 2, 1, 2);
+    std::vector<float> block_attn = self_attention(block_q, block_k, block_v, 2, 2, 1, 2);
+    std::vector<float> block_attention_out =
+        linear(tensors[layer_prefix + "self_attn.o_proj.weight"].data, block_attn, 2, 4, 2);
+    for (size_t i = 0; i < block_attention_out.size(); ++i) {
+        block_attention_out[i] += input[i];
+    }
+    std::vector<float> block_post =
+        rms_norm(tensors[layer_prefix + "post_attention_layernorm.weight"].data, block_attention_out, 2, 2);
+    std::vector<float> block_gate = linear(tensors[mlp_prefix + "gate_proj.weight"].data, block_post, 2, 2, 3);
+    std::vector<float> block_up = linear(tensors[mlp_prefix + "up_proj.weight"].data, block_post, 2, 2, 3);
+    for (size_t i = 0; i < block_gate.size(); ++i) {
+        block_gate[i] = gelu(block_gate[i]) * block_up[i];
+    }
+    std::vector<float> block_expected = linear(tensors[mlp_prefix + "down_proj.weight"].data, block_gate, 2, 3, 2);
+    for (size_t i = 0; i < block_expected.size(); ++i) {
+        block_expected[i] += block_attention_out[i];
+    }
+    require_close(block_actual, block_expected);
     return 0;
 }
