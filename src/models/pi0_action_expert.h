@@ -9,6 +9,7 @@ public:
     Pi0ActionExpert(const ModelConfig & config, const BackendConfig & backend, const TensorMap & tensors);
 
     bool has_layer(int layer) const;
+    void final_norm_batch(const std::vector<float> & tokens, int batch, std::vector<float> & out) const;
     void input_norm_batch(int layer, const std::vector<float> & tokens, int batch, std::vector<float> & out) const;
     void post_attention_norm_batch(
         int layer,
@@ -54,6 +55,11 @@ private:
     void norm_batch(
         int layer,
         const char * weight_name,
+        const std::vector<float> & tokens,
+        int batch,
+        std::vector<float> & out) const;
+    void norm_tensor_batch(
+        const Tensor & norm_w,
         const std::vector<float> & tokens,
         int batch,
         std::vector<float> & out) const;

@@ -173,6 +173,9 @@ bool has_valid_action_expert_tensors(const ModelConfig & config, const TensorMap
     const int64_t kv_out = config.openpi_action_expert_kv_out;
     const int64_t mlp = config.openpi_action_expert_mlp_width;
     const std::string prefix = "paligemma_with_expert.gemma_expert.model.layers.";
+    if (!has_tensor_shape(tensors, "paligemma_with_expert.gemma_expert.model.norm.weight", {width})) {
+        return false;
+    }
     for (int layer = 0; layer < config.openpi_action_expert_layers; ++layer) {
         const std::string base = prefix + std::to_string(layer) + ".";
         if (!has_tensor_shape(tensors, base + "input_layernorm.weight", {width}) ||

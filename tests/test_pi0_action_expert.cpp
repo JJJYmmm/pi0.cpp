@@ -179,6 +179,7 @@ int main() {
     vlacpp::TensorMap tensors;
     const std::string layer_prefix = "model.paligemma_with_expert.gemma_expert.model.layers.0.";
     const std::string mlp_prefix = layer_prefix + "mlp.";
+    tensors["model.paligemma_with_expert.gemma_expert.model.norm.weight"] = tensor({2}, {0.1f, -0.15f});
     tensors[layer_prefix + "input_layernorm.weight"] = tensor({2}, {-0.1f, 0.25f});
     tensors[layer_prefix + "post_attention_layernorm.weight"] = tensor({2}, {0.05f, -0.2f});
     tensors[layer_prefix + "self_attn.q_proj.weight"] =
@@ -206,6 +207,11 @@ int main() {
 
     expert.post_attention_norm_batch(0, input, 2, norm_actual);
     require_close(norm_actual, rms_norm(tensors[layer_prefix + "post_attention_layernorm.weight"].data, input, 2, 2));
+
+    expert.final_norm_batch(input, 2, norm_actual);
+    require_close(
+        norm_actual,
+        rms_norm(tensors["model.paligemma_with_expert.gemma_expert.model.norm.weight"].data, input, 2, 2));
 
     std::vector<float> q;
     std::vector<float> k;

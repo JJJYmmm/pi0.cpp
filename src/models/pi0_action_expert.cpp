@@ -62,27 +62,46 @@ void Pi0ActionExpert::post_attention_norm_batch(
     norm_batch(layer, "post_attention_layernorm.weight", tokens, batch, out);
 }
 
+void Pi0ActionExpert::final_norm_batch(
+    const std::vector<float> & tokens,
+    int batch,
+    std::vector<float> & out) const {
+    const Tensor * norm_w = find_tensor("paligemma_with_expert.gemma_expert.model.norm.weight");
+    if (norm_w == nullptr) {
+        throw std::invalid_argument("missing pi0 action expert final norm tensor");
+    }
+    norm_tensor_batch(*norm_w, tokens, batch, out);
+}
+
 void Pi0ActionExpert::norm_batch(
     int layer,
     const char * weight_name,
     const std::vector<float> & tokens,
     int batch,
     std::vector<float> & out) const {
-    if (batch <= 0 || config_.openpi_action_expert_width <= 0) {
-        throw std::invalid_argument("invalid pi0 action expert norm dimensions");
-    }
     const Tensor * norm_w = find_tensor(layer_prefix(layer) + weight_name);
     if (norm_w == nullptr) {
         throw std::invalid_argument("missing pi0 action expert norm tensor");
     }
+    norm_tensor_batch(*norm_w, tokens, batch, out);
+}
+
+void Pi0ActionExpert::norm_tensor_batch(
+    const Tensor & norm_w,
+    const std::vector<float> & tokens,
+    int batch,
+    std::vector<float> & out) const {
+    if (batch <= 0 || config_.openpi_action_expert_width <= 0) {
+        throw std::invalid_argument("invalid pi0 action expert norm dimensions");
+    }
     const int64_t width = config_.openpi_action_expert_width;
-    require_vector_shape(*norm_w, width, "action expert norm");
+    require_vector_shape(norm_w, width, "action expert norm");
     if (tokens.size() != static_cast<size_t>(batch) * static_cast<size_t>(width)) {
         throw std::invalid_argument("action expert norm input has incompatible shape");
     }
 
     const size_t tensor_bytes =
-        (norm_w->data.size() + tokens.size() + static_cast<size_t>(width) * static_cast<size_t>(batch)) *
+        (norm_w.data.size() + tokens.size() + static_cast<size_t>(width) * static_cast<size_t>(batch)) *
         sizeof(float);
     const size_t context_size = std::max<size_t>(64 * 1024 * 1024, tensor_bytes * 4 + 1024 * 1024);
     ggml_init_params params{};
@@ -99,7 +118,7 @@ void Pi0ActionExpert::norm_batch(
     std::memcpy(ggml_get_data_f32(x), tokens.data(), tokens.size() * sizeof(float));
     float * scale_data = ggml_get_data_f32(scale);
     for (int64_t i = 0; i < width; ++i) {
-        scale_data[i] = 1.0f + norm_w->data[static_cast<size_t>(i)];
+        scale_data[i] = 1.0f + norm_w.data[static_cast<size_t>(i)];
     }
 
     ggml_tensor * y = ggml_mul(ctx, ggml_rms_norm(ctx, x, 1.0e-6f), scale);
