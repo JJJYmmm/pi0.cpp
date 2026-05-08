@@ -97,6 +97,25 @@ default this harness requires `vlacpp-pi0 --info` to report `full-openpi`; use
 `--allow-restricted-vlacpp` only for local harness tests that intentionally
 compare a subset model.
 
+For repeated local comparisons, use the Python ctypes API and benchmark harness.
+The benchmark defaults to CPU-vs-CPU so the timing comparison is not mixed
+across devices; pass `--device cuda` only when both OpenPI and the vlacpp build
+can run on CUDA.
+
+```sh
+PYTHONPATH=/tmp/openpi-src/src /tmp/openpi-src/.venv/bin/python \
+  tools/benchmark-openpi-vlacpp.py \
+  --openpi-config pi0_aloha \
+  --openpi-checkpoint ckpts/lerobot-pi0/model.safetensors \
+  --vlacpp-model /tmp/vlacpp-pi0-full-local.gguf \
+  --vlacpp-library build/libvlacpp.so \
+  --samples 3 \
+  --warmup 1 \
+  --steps 1 \
+  --device cpu \
+  --output /tmp/vlacpp-openpi-benchmark.json
+```
+
 The converter also accepts small Hugging Face JSON assets with
 `hf://owner/repo/path/to/config.json`; for example, it can download the pi0.5
 Libero config and emit a tiny GGUF scaffold with matching action shape:

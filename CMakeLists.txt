@@ -276,9 +276,19 @@ if(VLACPP_BUILD_TESTS)
                 --binary "$<TARGET_FILE:vlacpp-pi0>"
                 --model "${VLACPP_TINY_GGUF}"
         )
+        add_test(
+            NAME vlacpp-python-api
+            COMMAND
+                ${Python3_EXECUTABLE}
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_python_api.py"
+                --repo "${CMAKE_CURRENT_SOURCE_DIR}"
+                --library "$<TARGET_FILE:vlacpp>"
+                --model "${VLACPP_TINY_GGUF}"
+        )
         set_tests_properties(vlacpp-tiny-openpi-compare PROPERTIES DEPENDS vlacpp-tiny-gguf-convert)
         set_tests_properties(vlacpp-tiny-capability-info PROPERTIES DEPENDS vlacpp-tiny-gguf-convert)
         set_tests_properties(vlacpp-require-full-rejects-restricted PROPERTIES DEPENDS vlacpp-tiny-gguf-convert)
+        set_tests_properties(vlacpp-python-api PROPERTIES DEPENDS vlacpp-tiny-gguf-convert)
         add_test(
             NAME vlacpp-fake-openpi-policy-compare
             COMMAND
