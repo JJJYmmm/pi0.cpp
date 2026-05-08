@@ -31,6 +31,13 @@ public:
         int kv_heads,
         int head_dim,
         std::vector<float> & out) const;
+    void rope_batch(
+        const std::vector<float> & values,
+        const std::vector<int> & positions,
+        int tokens,
+        int heads,
+        int head_dim,
+        std::vector<float> & out) const;
     void attention_out_batch(int layer, const std::vector<float> & values, int batch, std::vector<float> & out) const;
     void mlp_batch(int layer, const std::vector<float> & tokens, int batch, std::vector<float> & out) const;
 

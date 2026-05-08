@@ -260,6 +260,70 @@ void Pi0ActionExpert::self_attention_batch(
     ggml_free(ctx);
 }
 
+void Pi0ActionExpert::rope_batch(
+    const std::vector<float> & values,
+    const std::vector<int> & positions,
+    int tokens,
+    int heads,
+    int head_dim,
+    std::vector<float> & out) const {
+    if (tokens <= 0 || heads <= 0 || head_dim <= 0 || head_dim % 2 != 0 ||
+        positions.size() != static_cast<size_t>(tokens)) {
+        throw std::invalid_argument("invalid pi0 action expert RoPE dimensions");
+    }
+    const size_t value_size =
+        static_cast<size_t>(tokens) * static_cast<size_t>(heads) * static_cast<size_t>(head_dim);
+    if (values.size() != value_size) {
+        throw std::invalid_argument("action expert RoPE input has incompatible shape");
+    }
+
+    const size_t tensor_bytes = (values.size() + positions.size()) * sizeof(float);
+    const size_t context_size = std::max<size_t>(64 * 1024 * 1024, tensor_bytes * 4 + 1024 * 1024);
+    ggml_init_params params{};
+    params.mem_size = context_size;
+    params.mem_buffer = nullptr;
+    params.no_alloc = false;
+    ggml_context * ctx = ggml_init(params);
+    if (ctx == nullptr) {
+        throw std::runtime_error("failed to initialize ggml context");
+    }
+
+    ggml_tensor * x = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, head_dim, heads, tokens);
+    ggml_tensor * pos = ggml_new_tensor_1d(ctx, GGML_TYPE_I32, tokens);
+    std::memcpy(ggml_get_data_f32(x), values.data(), values.size() * sizeof(float));
+    int32_t * pos_data = static_cast<int32_t *>(pos->data);
+    for (int i = 0; i < tokens; ++i) {
+        pos_data[i] = static_cast<int32_t>(positions[static_cast<size_t>(i)]);
+    }
+
+    ggml_tensor * y = ggml_rope_ext(
+        ctx,
+        x,
+        pos,
+        nullptr,
+        head_dim,
+        GGML_ROPE_TYPE_NEOX,
+        8192,
+        10000.0f,
+        1.0f,
+        0.0f,
+        1.0f,
+        0.0f,
+        0.0f);
+    ggml_cgraph * graph = ggml_new_graph(ctx);
+    ggml_build_forward_expand(graph, y);
+    const ggml_status status = ggml_graph_compute_with_ctx(ctx, graph, std::max(1, backend_.n_threads));
+    if (status != GGML_STATUS_SUCCESS) {
+        ggml_free(ctx);
+        throw std::runtime_error("ggml action expert RoPE graph compute failed");
+    }
+
+    out.assign(
+        ggml_get_data_f32(y),
+        ggml_get_data_f32(y) + value_size);
+    ggml_free(ctx);
+}
+
 void Pi0ActionExpert::attention_out_batch(
     int layer,
     const std::vector<float> & values,

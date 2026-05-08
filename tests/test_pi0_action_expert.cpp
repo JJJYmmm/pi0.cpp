@@ -114,6 +114,35 @@ std::vector<float> self_attention(
     return result;
 }
 
+std::vector<float> rope_neox(
+    const std::vector<float> & values,
+    const std::vector<int> & positions,
+    int tokens,
+    int heads,
+    int head_dim) {
+    std::vector<float> result(values.size(), 0.0f);
+    const int half = head_dim / 2;
+    for (int token = 0; token < tokens; ++token) {
+        for (int head = 0; head < heads; ++head) {
+            for (int dim = 0; dim < half; ++dim) {
+                const float theta =
+                    static_cast<float>(positions[static_cast<size_t>(token)]) *
+                    std::pow(10000.0f, -2.0f * static_cast<float>(dim) / static_cast<float>(head_dim));
+                const float c = std::cos(theta);
+                const float s = std::sin(theta);
+                const size_t lo =
+                    (static_cast<size_t>(token) * static_cast<size_t>(heads) + static_cast<size_t>(head)) *
+                        static_cast<size_t>(head_dim) +
+                    static_cast<size_t>(dim);
+                const size_t hi = lo + static_cast<size_t>(half);
+                result[lo] = values[lo] * c - values[hi] * s;
+                result[hi] = values[hi] * c + values[lo] * s;
+            }
+        }
+    }
+    return result;
+}
+
 void require_close(const std::vector<float> & actual, const std::vector<float> & expected) {
     if (actual.size() != expected.size()) {
         std::cerr << "size mismatch\n";
@@ -204,6 +233,11 @@ int main() {
     std::vector<float> attention_core;
     expert.self_attention_batch(attention_q, attention_k, attention_v, 3, 2, 2, 2, attention_core);
     require_close(attention_core, self_attention(attention_q, attention_k, attention_v, 3, 2, 2, 2));
+
+    std::vector<float> rope_actual;
+    const std::vector<int> positions = {0, 1, 3};
+    expert.rope_batch(attention_q, positions, 3, 2, 2, rope_actual);
+    require_close(rope_actual, rope_neox(attention_q, positions, 3, 2, 2));
 
     const std::vector<float> gqa_k = {
         -0.2f, 0.4f,
