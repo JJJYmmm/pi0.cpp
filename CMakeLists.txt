@@ -278,6 +278,18 @@ if(VLACPP_BUILD_TESTS)
                 --repo "${CMAKE_CURRENT_SOURCE_DIR}"
                 --work-dir "${CMAKE_CURRENT_BINARY_DIR}/download-lock"
         )
+        add_test(
+            NAME vlacpp-pi0-goal-audit-incomplete
+            COMMAND
+                ${Python3_EXECUTABLE}
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/audit-pi0-goal.py"
+                --repo "${CMAKE_CURRENT_SOURCE_DIR}"
+                --binary "$<TARGET_FILE:vlacpp-pi0>"
+                --checkpoint "${CMAKE_CURRENT_SOURCE_DIR}/ckpts/lerobot-pi0/model.safetensors"
+                --vlacpp-model "${VLACPP_TINY_GGUF}"
+                --allow-incomplete
+        )
+        set_tests_properties(vlacpp-pi0-goal-audit-incomplete PROPERTIES DEPENDS vlacpp-tiny-gguf-convert)
 
         add_test(
             NAME vlacpp-action-head-gguf-convert
