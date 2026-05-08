@@ -283,6 +283,7 @@ def main() -> None:
             "pi0-full",
             "pi05-full",
             "pi0-vision-mtmd",
+            "pi0-vision-projector",
         ],
         default="action-expert",
     )
@@ -304,6 +305,8 @@ def main() -> None:
         mapping = full_tensor_map(header, PI05_ACTION_EXPERT_MAP)
     elif args.family == "pi0-vision-mtmd":
         mapping = pi0_vision_mtmd_tensor_map(header)
+    elif args.family == "pi0-vision-projector":
+        mapping = resolve_runtime_aliases(header, VISION_PROJECTOR_MAP)
     else:
         mapping = TINY_VELOCITY_MAP
     manifest = build_manifest(args.source, header, mapping, args.family, args.include_inventory)

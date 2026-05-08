@@ -91,6 +91,7 @@ if(VLACPP_BUILD_TESTS)
         set(VLACPP_OPENPI_GRAPH_MANIFEST "${CMAKE_CURRENT_SOURCE_DIR}/tests/openpi-graph-manifest.json")
         set(VLACPP_OPENPI_GRAPH_PI0_FULL_MANIFEST "${CMAKE_CURRENT_BINARY_DIR}/openpi-graph-pi0-full-map.json")
         set(VLACPP_PI0_VISION_MTMD_MANIFEST "${CMAKE_CURRENT_BINARY_DIR}/pi0-vision-mtmd-map.json")
+        set(VLACPP_PI0_VISION_PROJECTOR_MANIFEST "${CMAKE_CURRENT_BINARY_DIR}/pi0-vision-projector-map.json")
         add_test(
             NAME vlacpp-openpi-graph-summary
             COMMAND
@@ -154,12 +155,36 @@ if(VLACPP_BUILD_TESTS)
                 "${CMAKE_CURRENT_SOURCE_DIR}/tools/summarize-tensor-map.py"
                 "${VLACPP_OPENPI_GRAPH_PI0_FULL_MANIFEST}"
                 --expect-family pi0-full
-                --expect-expected 15
-                --expect-mapped 15
-                --expect-total 15
+                --expect-expected 16
+                --expect-mapped 16
+                --expect-total 16
                 --expect-unmapped 0
         )
         set_tests_properties(vlacpp-openpi-graph-pi0-full-summary PROPERTIES DEPENDS vlacpp-openpi-graph-pi0-full-map)
+        add_test(
+            NAME vlacpp-pi0-vision-projector-map
+            COMMAND
+                ${Python3_EXECUTABLE}
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/map-openpi-tensors.py"
+                "${VLACPP_OPENPI_GRAPH_MANIFEST}"
+                --family pi0-vision-projector
+                --require-complete
+                --include-inventory
+                --output "${VLACPP_PI0_VISION_PROJECTOR_MANIFEST}"
+        )
+        add_test(
+            NAME vlacpp-pi0-vision-projector-summary
+            COMMAND
+                ${Python3_EXECUTABLE}
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/summarize-tensor-map.py"
+                "${VLACPP_PI0_VISION_PROJECTOR_MANIFEST}"
+                --expect-family pi0-vision-projector
+                --expect-expected 2
+                --expect-mapped 2
+                --expect-total 16
+                --expect-unmapped 14
+        )
+        set_tests_properties(vlacpp-pi0-vision-projector-summary PROPERTIES DEPENDS vlacpp-pi0-vision-projector-map)
         add_test(
             NAME vlacpp-pi0-vision-mtmd-summary
             COMMAND
@@ -169,8 +194,8 @@ if(VLACPP_BUILD_TESTS)
                 --expect-family pi0-vision-mtmd
                 --expect-expected 3
                 --expect-mapped 3
-                --expect-total 15
-                --expect-unmapped 12
+                --expect-total 16
+                --expect-unmapped 13
         )
         set_tests_properties(vlacpp-pi0-vision-mtmd-summary PROPERTIES DEPENDS vlacpp-pi0-vision-mtmd-map)
         add_test(

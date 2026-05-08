@@ -24,6 +24,8 @@ Current verified boundary:
 - `tools/map-openpi-tensors.py --family pi0-vision-mtmd` maps OpenPI SigLIP
   vision tower tensors into llama.cpp mtmd `v.*` names such as
   `v.patch_embd.weight`, `v.position_embd.weight`, and `v.blk.*.attn_q.weight`.
+- `tools/map-openpi-tensors.py --family pi0-vision-projector` isolates
+  `multi_modal_projector.linear` into `vlacpp.openpi.vision_projector.*`.
 
 Implication for pi0:
 
