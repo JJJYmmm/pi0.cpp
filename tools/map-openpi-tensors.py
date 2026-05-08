@@ -45,6 +45,14 @@ def all_tensor_map(header: dict[str, Any]) -> dict[str, str]:
     return {row["name"]: row["name"] for row in header["tensors"]}
 
 
+def full_tensor_map(header: dict[str, Any], runtime_aliases: dict[str, str]) -> dict[str, str]:
+    mapping = all_tensor_map(header)
+    for source, target in runtime_aliases.items():
+        if source in mapping:
+            mapping[source] = target
+    return mapping
+
+
 def inspect_header(source: str) -> dict[str, Any]:
     script = Path(__file__).with_name("inspect-safetensors.py")
     raw = subprocess.check_output(
@@ -166,7 +174,7 @@ def main() -> None:
     parser.add_argument("source", help="local path, https URL, or hf://owner/repo/path/to/model.safetensors")
     parser.add_argument(
         "--family",
-        choices=["action-expert", "pi05-action-expert", "tiny-velocity", "all"],
+        choices=["action-expert", "pi05-action-expert", "tiny-velocity", "all", "pi0-full", "pi05-full"],
         default="action-expert",
     )
     parser.add_argument("--output", type=Path)
@@ -181,6 +189,10 @@ def main() -> None:
         mapping = PI05_ACTION_EXPERT_MAP
     elif args.family == "all":
         mapping = all_tensor_map(header)
+    elif args.family == "pi0-full":
+        mapping = full_tensor_map(header, ACTION_EXPERT_MAP)
+    elif args.family == "pi05-full":
+        mapping = full_tensor_map(header, PI05_ACTION_EXPERT_MAP)
     else:
         mapping = TINY_VELOCITY_MAP
     manifest = build_manifest(args.source, header, mapping, args.family, args.include_inventory)

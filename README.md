@@ -241,6 +241,11 @@ expected coverage in automation.
 `--family all` emits an identity mapping for every tensor in the safetensors
 header, which is useful for full-checkpoint GGUF conversion experiments; runtime
 support still depends on implementing the corresponding graph.
+`--family pi0-full` and `--family pi05-full` also include every tensor from the
+header, but alias the currently supported action/state head tensors to the
+runtime's `vlacpp.openpi.*` names. This lets a full-checkpoint GGUF preserve
+backbone tensors for future ggml graph work while still exercising the
+implemented restricted action-head path.
 
 See `docs/pi0-infer-audit.md` for the current prompt-to-artifact completion
 audit and the remaining gaps before full OpenPI parity.
@@ -254,13 +259,20 @@ Implementation should track these upstream designs:
 - StarVLA: keep raw sample boundaries explicit and model components pluggable;
   future model families should register through the same model vtable instead
   of coupling preprocessing, backbone, and action head.
-- llama.cpp: use GGUF metadata and ggml backend allocation patterns once the
-  first real graph lands.
+- llama.cpp: follow its converter/graph split where OpenPI-specific code
+  parses config and tensor names, then uses GGUF writer conventions and ggml
+  graph builders. For the real graph, prefer reusing existing llama.cpp/ggml
+  model components such as SigLIP-family multimodal encoders and Gemma-style
+  transformer blocks before adding vlacpp-local kernels.
 
 ## Next Engineering Steps
 
-1. Expand openpi tensor collection in `tools/convert-openpi-to-gguf.py` from
-   the tiny velocity/action-head subsets to the full pi0/pi0.5 tensor map.
-2. Port the SigLIP/PaliGemma/Gemma blocks to ggml under `src/models/pi0.cpp`.
-3. Add parity tests against full openpi checkpoints for selected intermediate
+1. Refactor `tools/convert-openpi-to-gguf.py` toward the llama.cpp converter
+   pattern: OpenPI config/tensor mapping in this repo, GGUF writing through a
+   reusable writer module instead of hand-coded container emission.
+2. Expand openpi tensor collection from the tiny velocity/action-head subsets to
+   full pi0/pi0.5 manifests that preserve backbone tensors and runtime aliases.
+3. Wire SigLIP/PaliGemma/Gemma execution through ggml/llama.cpp-style graph
+   components under `src/models/pi0.cpp`.
+4. Add parity tests against full openpi checkpoints for selected intermediate
    tensors and final action chunks.

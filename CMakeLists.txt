@@ -63,6 +63,8 @@ if(VLACPP_BUILD_TESTS)
         set(VLACPP_ACTION_HEAD_INVENTORY_MANIFEST "${CMAKE_CURRENT_BINARY_DIR}/action-head-openpi-inventory-map.json")
         set(VLACPP_ACTION_HEAD_ALL_MANIFEST "${CMAKE_CURRENT_BINARY_DIR}/action-head-openpi-all-map.json")
         set(VLACPP_ACTION_HEAD_ALL_GGUF "${CMAKE_CURRENT_BINARY_DIR}/action-head-openpi-all.gguf")
+        set(VLACPP_PI0_FULL_MANIFEST "${CMAKE_CURRENT_BINARY_DIR}/action-head-openpi-full-map.json")
+        set(VLACPP_PI0_FULL_GGUF "${CMAKE_CURRENT_BINARY_DIR}/action-head-openpi-full.gguf")
         set(VLACPP_ACTION_HEAD_MAPPED_GGUF "${CMAKE_CURRENT_BINARY_DIR}/action-head-openpi-mapped.gguf")
         set(VLACPP_ACTION_HEAD_NORM_STATS "${CMAKE_CURRENT_SOURCE_DIR}/tests/action-head-norm-stats.json")
         set(VLACPP_ACTION_HEAD_MAPPED_NORM_GGUF "${CMAKE_CURRENT_BINARY_DIR}/action-head-openpi-mapped-norm.gguf")
@@ -71,6 +73,8 @@ if(VLACPP_BUILD_TESTS)
         set(VLACPP_PI05_ACTION_HEAD_SAFETENSORS "${CMAKE_CURRENT_BINARY_DIR}/pi05-action-head-openpi-names.safetensors")
         set(VLACPP_PI05_ACTION_HEAD_MANIFEST "${CMAKE_CURRENT_BINARY_DIR}/pi05-action-head-openpi-map.json")
         set(VLACPP_PI05_ACTION_HEAD_INVENTORY_MANIFEST "${CMAKE_CURRENT_BINARY_DIR}/pi05-action-head-openpi-inventory-map.json")
+        set(VLACPP_PI05_FULL_MANIFEST "${CMAKE_CURRENT_BINARY_DIR}/pi05-action-head-openpi-full-map.json")
+        set(VLACPP_PI05_FULL_GGUF "${CMAKE_CURRENT_BINARY_DIR}/pi05-action-head-openpi-full.gguf")
         set(VLACPP_PI05_ACTION_HEAD_MAPPED_GGUF "${CMAKE_CURRENT_BINARY_DIR}/pi05-action-head-openpi-mapped.gguf")
         set(VLACPP_TINY_SAFETENSORS "${CMAKE_CURRENT_BINARY_DIR}/tiny-openpi.safetensors")
         set(VLACPP_TINY_SAFETENSORS_GGUF "${CMAKE_CURRENT_BINARY_DIR}/tiny-openpi-safetensors.gguf")
@@ -274,6 +278,50 @@ if(VLACPP_BUILD_TESTS)
                 --output "${VLACPP_ACTION_HEAD_ALL_GGUF}"
         )
         add_test(
+            NAME vlacpp-action-head-safetensors-pi0-full-map
+            COMMAND
+                ${Python3_EXECUTABLE}
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/map-openpi-tensors.py"
+                "${VLACPP_ACTION_HEAD_SAFETENSORS}"
+                --family pi0-full
+                --require-complete
+                --include-inventory
+                --output "${VLACPP_PI0_FULL_MANIFEST}"
+        )
+        add_test(
+            NAME vlacpp-action-head-safetensors-pi0-full-summary
+            COMMAND
+                ${Python3_EXECUTABLE}
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/summarize-tensor-map.py"
+                "${VLACPP_PI0_FULL_MANIFEST}"
+                --expect-family pi0-full
+                --expect-expected 10
+                --expect-mapped 10
+                --expect-total 10
+                --expect-unmapped 0
+        )
+        add_test(
+            NAME vlacpp-action-head-safetensors-pi0-full-convert
+            COMMAND
+                ${Python3_EXECUTABLE}
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/convert-openpi-to-gguf.py"
+                --tensor-map-manifest "${VLACPP_PI0_FULL_MANIFEST}"
+                --output "${VLACPP_PI0_FULL_GGUF}"
+        )
+        add_test(
+            NAME vlacpp-action-head-safetensors-pi0-full-reference-compare
+            COMMAND
+                ${Python3_EXECUTABLE}
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/compare_action_head_reference.py"
+                --checkpoint "${VLACPP_ACTION_HEAD_CHECKPOINT}"
+                --model "${VLACPP_PI0_FULL_GGUF}"
+                --binary "$<TARGET_FILE:vlacpp-pi0>"
+                --state "1,-2"
+                --prompt "pick up the fork"
+                --steps 2
+                --seed 1
+        )
+        add_test(
             NAME vlacpp-action-head-mapped-safetensors-convert
             COMMAND
                 ${Python3_EXECUTABLE}
@@ -344,6 +392,10 @@ if(VLACPP_BUILD_TESTS)
         set_tests_properties(vlacpp-action-head-safetensors-all-map PROPERTIES DEPENDS vlacpp-action-head-safetensors-create)
         set_tests_properties(vlacpp-action-head-safetensors-all-summary PROPERTIES DEPENDS vlacpp-action-head-safetensors-all-map)
         set_tests_properties(vlacpp-action-head-safetensors-all-convert PROPERTIES DEPENDS vlacpp-action-head-safetensors-all-map)
+        set_tests_properties(vlacpp-action-head-safetensors-pi0-full-map PROPERTIES DEPENDS vlacpp-action-head-safetensors-create)
+        set_tests_properties(vlacpp-action-head-safetensors-pi0-full-summary PROPERTIES DEPENDS vlacpp-action-head-safetensors-pi0-full-map)
+        set_tests_properties(vlacpp-action-head-safetensors-pi0-full-convert PROPERTIES DEPENDS vlacpp-action-head-safetensors-pi0-full-map)
+        set_tests_properties(vlacpp-action-head-safetensors-pi0-full-reference-compare PROPERTIES DEPENDS vlacpp-action-head-safetensors-pi0-full-convert)
         set_tests_properties(vlacpp-action-head-mapped-safetensors-convert PROPERTIES DEPENDS vlacpp-action-head-safetensors-map)
         set_tests_properties(vlacpp-action-head-mapped-safetensors-reference-compare PROPERTIES DEPENDS vlacpp-action-head-mapped-safetensors-convert)
         set_tests_properties(vlacpp-action-head-local-smoke PROPERTIES DEPENDS vlacpp-action-head-safetensors-create)
@@ -447,6 +499,50 @@ if(VLACPP_BUILD_TESTS)
                 --expect-unmapped 0
         )
         add_test(
+            NAME vlacpp-pi05-action-head-safetensors-pi05-full-map
+            COMMAND
+                ${Python3_EXECUTABLE}
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/map-openpi-tensors.py"
+                "${VLACPP_PI05_ACTION_HEAD_SAFETENSORS}"
+                --family pi05-full
+                --require-complete
+                --include-inventory
+                --output "${VLACPP_PI05_FULL_MANIFEST}"
+        )
+        add_test(
+            NAME vlacpp-pi05-action-head-safetensors-pi05-full-summary
+            COMMAND
+                ${Python3_EXECUTABLE}
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/summarize-tensor-map.py"
+                "${VLACPP_PI05_FULL_MANIFEST}"
+                --expect-family pi05-full
+                --expect-expected 8
+                --expect-mapped 8
+                --expect-total 8
+                --expect-unmapped 0
+        )
+        add_test(
+            NAME vlacpp-pi05-action-head-safetensors-pi05-full-convert
+            COMMAND
+                ${Python3_EXECUTABLE}
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/convert-openpi-to-gguf.py"
+                --tensor-map-manifest "${VLACPP_PI05_FULL_MANIFEST}"
+                --output "${VLACPP_PI05_FULL_GGUF}"
+        )
+        add_test(
+            NAME vlacpp-pi05-action-head-safetensors-pi05-full-reference-compare
+            COMMAND
+                ${Python3_EXECUTABLE}
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/compare_pi05_action_head_reference.py"
+                --checkpoint "${VLACPP_PI05_ACTION_HEAD_CHECKPOINT}"
+                --model "${VLACPP_PI05_FULL_GGUF}"
+                --binary "$<TARGET_FILE:vlacpp-pi0>"
+                --state "1,-2"
+                --prompt "pick up the fork"
+                --steps 2
+                --seed 1
+        )
+        add_test(
             NAME vlacpp-pi05-action-head-mapped-safetensors-convert
             COMMAND
                 ${Python3_EXECUTABLE}
@@ -471,6 +567,10 @@ if(VLACPP_BUILD_TESTS)
         set_tests_properties(vlacpp-pi05-action-head-safetensors-inventory PROPERTIES DEPENDS vlacpp-pi05-action-head-safetensors-create)
         set_tests_properties(vlacpp-pi05-action-head-safetensors-inventory-check PROPERTIES DEPENDS vlacpp-pi05-action-head-safetensors-inventory)
         set_tests_properties(vlacpp-pi05-action-head-safetensors-summary PROPERTIES DEPENDS vlacpp-pi05-action-head-safetensors-inventory)
+        set_tests_properties(vlacpp-pi05-action-head-safetensors-pi05-full-map PROPERTIES DEPENDS vlacpp-pi05-action-head-safetensors-create)
+        set_tests_properties(vlacpp-pi05-action-head-safetensors-pi05-full-summary PROPERTIES DEPENDS vlacpp-pi05-action-head-safetensors-pi05-full-map)
+        set_tests_properties(vlacpp-pi05-action-head-safetensors-pi05-full-convert PROPERTIES DEPENDS vlacpp-pi05-action-head-safetensors-pi05-full-map)
+        set_tests_properties(vlacpp-pi05-action-head-safetensors-pi05-full-reference-compare PROPERTIES DEPENDS vlacpp-pi05-action-head-safetensors-pi05-full-convert)
         set_tests_properties(vlacpp-pi05-action-head-mapped-safetensors-convert PROPERTIES DEPENDS vlacpp-pi05-action-head-safetensors-map)
         set_tests_properties(vlacpp-pi05-action-head-mapped-safetensors-reference-compare PROPERTIES DEPENDS vlacpp-pi05-action-head-mapped-safetensors-convert)
 
