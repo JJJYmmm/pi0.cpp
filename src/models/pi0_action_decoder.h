@@ -11,6 +11,11 @@ public:
     bool has_pi0_action_head() const;
     bool has_pi05_action_head() const;
     void state_context(const std::vector<float> & state, std::vector<float> & out) const;
+    void suffix_embeddings(
+        float time,
+        const std::vector<float> & actions,
+        const std::vector<float> & state_context,
+        std::vector<float> & out) const;
     void velocity_batch(
         float time,
         const std::vector<float> & actions,

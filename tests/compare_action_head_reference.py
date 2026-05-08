@@ -59,30 +59,37 @@ def posemb_sincos(time: float, width: int) -> list[float]:
     return result
 
 
-def action_head_velocity(tensors: dict, action: list[float], time: float) -> list[float]:
+def action_head_suffix_tokens(tensors: dict, action: list[float], time: float) -> list[float]:
     in_w = tensors["vlacpp.openpi.action_in_proj.weight"]
     in_b = tensors["vlacpp.openpi.action_in_proj.bias"]
     time_in_w = tensors["vlacpp.openpi.action_time_mlp_in.weight"]
     time_in_b = tensors["vlacpp.openpi.action_time_mlp_in.bias"]
     time_out_w = tensors["vlacpp.openpi.action_time_mlp_out.weight"]
     time_out_b = tensors["vlacpp.openpi.action_time_mlp_out.bias"]
-    out_w = tensors["vlacpp.openpi.action_out_proj.weight"]
-    out_b = tensors["vlacpp.openpi.action_out_proj.bias"]
 
     width = in_w["shape"][0]
     action_dim = in_w["shape"][1]
-    action_token = linear(in_w["data"], in_b["data"], action, width, action_dim)
+    suffix_tokens = []
     if "vlacpp.openpi.state_proj.weight" in tensors:
         state_w = tensors["vlacpp.openpi.state_proj.weight"]
         state_b = tensors["vlacpp.openpi.state_proj.bias"]
-        state_context = linear(state_w["data"], state_b["data"], CURRENT_STATE, width, state_w["shape"][1])
-        action_token = [value + state_context[i] for i, value in enumerate(action_token)]
+        suffix_tokens.extend(linear(state_w["data"], state_b["data"], CURRENT_STATE, width, state_w["shape"][1]))
+
+    action_token = linear(in_w["data"], in_b["data"], action, width, action_dim)
     time_emb = posemb_sincos(time, width)
     hidden = linear(time_in_w["data"], time_in_b["data"], action_token + time_emb, width, width * 2)
     hidden = [swish(value) for value in hidden]
-    mixed = linear(time_out_w["data"], time_out_b["data"], hidden, width, width)
-    mixed = [swish(value) for value in mixed]
-    return linear(out_w["data"], out_b["data"], mixed, out_b["shape"][0], width)
+    suffix_tokens.extend(linear(time_out_w["data"], time_out_b["data"], hidden, width, width))
+    return suffix_tokens
+
+
+def action_head_velocity(tensors: dict, action: list[float], time: float) -> list[float]:
+    out_w = tensors["vlacpp.openpi.action_out_proj.weight"]
+    out_b = tensors["vlacpp.openpi.action_out_proj.bias"]
+    width = out_w["shape"][1]
+    suffix_tokens = action_head_suffix_tokens(tensors, action, time)
+    action_token = suffix_tokens[-width:]
+    return linear(out_w["data"], out_b["data"], action_token, out_b["shape"][0], width)
 
 
 CURRENT_STATE: list[float] = []
