@@ -26,7 +26,10 @@ def add_metadata(writer: gguf.GGUFWriter, metadata: dict[str, Any]) -> None:
         elif isinstance(value, bool):
             writer.add_bool(key, value)
         elif isinstance(value, int):
-            writer.add_int32(key, value)
+            if key.startswith("clip."):
+                writer.add_uint32(key, value)
+            else:
+                writer.add_int32(key, value)
         elif isinstance(value, float):
             writer.add_float32(key, value)
         elif isinstance(value, list):

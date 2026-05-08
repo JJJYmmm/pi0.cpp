@@ -495,6 +495,40 @@ def infer_openpi_graph_metadata(tensors: dict[str, dict[str, Any]]) -> dict[str,
     return inferred
 
 
+def infer_mtmd_vision_metadata(args: argparse.Namespace, tensors: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    patch = find_shape(
+        tensors,
+        "paligemma_with_expert.paligemma.model.vision_tower.vision_model.embeddings.patch_embedding.weight",
+    ) or find_shape(tensors, "v.patch_embd.weight")
+    projector = find_shape(tensors, "mm.input_projection.weight")
+    ffn = find_shape(tensors, "v.blk.0.ffn_up.weight")
+    if patch is None or len(patch) != 4:
+        raise SystemExit("--mtmd-vision-metadata requires v.patch_embd.weight")
+    if projector is None or len(projector) != 2:
+        raise SystemExit("--mtmd-vision-metadata requires mm.input_projection.weight")
+
+    vision_width = int(patch[0])
+    patch_size = int(patch[2])
+    projection_dim = int(projector[0])
+    return {
+        "general.architecture": "clip",
+        "clip.has_vision_encoder": True,
+        "clip.has_audio_encoder": False,
+        "clip.projector_type": "openpi",
+        "clip.use_gelu": True,
+        "clip.vision.image_size": int(args.image_width),
+        "clip.vision.patch_size": patch_size,
+        "clip.vision.embedding_length": vision_width,
+        "clip.vision.feed_forward_length": int(ffn[0]) if ffn is not None and len(ffn) == 2 else 4 * vision_width,
+        "clip.vision.block_count": int(layer_count(tensors, r"v\.blk\.(\d+)\.") or 0),
+        "clip.vision.projection_dim": projection_dim,
+        "clip.vision.attention.head_count": 16 if vision_width == 1152 else 12,
+        "clip.vision.attention.layer_norm_epsilon": 1.0e-6,
+        "clip.vision.image_mean": [0.5, 0.5, 0.5],
+        "clip.vision.image_std": [0.5, 0.5, 0.5],
+    }
+
+
 def build_metadata(args: argparse.Namespace, checkpoint: dict[str, Any]) -> dict[str, Any]:
     metadata = checkpoint.get("metadata", {})
     tensors = checkpoint.get("tensors", {})
@@ -529,6 +563,8 @@ def build_metadata(args: argparse.Namespace, checkpoint: dict[str, Any]) -> dict
     for key in inferred:
         if key.startswith("openpi_"):
             result[key] = int(inferred[key])
+    if args.mtmd_vision_metadata:
+        result.update(infer_mtmd_vision_metadata(args, tensors))
     return result
 
 
@@ -652,7 +688,13 @@ def gguf_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
     for key, source in optional_ints.items():
         if source in metadata:
             result[key] = int(metadata[source])
+    if "clip.projector_type" in metadata:
+        result["general.architecture"] = metadata.get("general.architecture", "clip")
+        for key, value in metadata.items():
+            if key.startswith("clip."):
+                result[key] = value
     return result
+
 
 def main() -> None:
     parser = argparse.ArgumentParser()
@@ -661,6 +703,7 @@ def main() -> None:
     parser.add_argument("--norm-stats", help="optional OpenPI norm_stats JSON file, local path, hf:// URI, or ms:// URI")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--output-format", choices=["auto", "json", "gguf"], default="auto")
+    parser.add_argument("--mtmd-vision-metadata", action="store_true", help="write llama.cpp mtmd metadata for pi0 vision GGUFs")
     parser.add_argument("--init-tiny", action="store_true", help="create tiny reference tensors when checkpoint has metadata only")
     parser.add_argument("--tensor-map-manifest", type=Path, help="convert tensors listed in a map-openpi-tensors manifest")
     parser.add_argument("--model-type", choices=["mock-pi0", "pi0", "pi05"])

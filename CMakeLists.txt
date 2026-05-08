@@ -225,10 +225,10 @@ if(VLACPP_BUILD_TESTS)
                 "${CMAKE_CURRENT_SOURCE_DIR}/tools/summarize-tensor-map.py"
                 "${VLACPP_PI0_VISION_MTMD_MANIFEST}"
                 --expect-family pi0-vision-mtmd
-                --expect-expected 3
-                --expect-mapped 3
+                --expect-expected 5
+                --expect-mapped 5
                 --expect-total 16
-                --expect-unmapped 13
+                --expect-unmapped 11
         )
         set_tests_properties(vlacpp-pi0-vision-mtmd-summary PROPERTIES DEPENDS vlacpp-pi0-vision-mtmd-map)
         add_test(

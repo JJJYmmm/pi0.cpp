@@ -68,6 +68,13 @@ VISION_SUFFIX_MAP = {
     "post_layernorm.bias": "v.post_ln.bias",
 }
 
+VISION_MTMD_PROJECTOR_MAP = {
+    "paligemma_with_expert.paligemma.model.multi_modal_projector.linear.weight":
+        "mm.input_projection.weight",
+    "paligemma_with_expert.paligemma.model.multi_modal_projector.linear.bias":
+        "mm.input_projection.bias",
+}
+
 VISION_LAYER_SUFFIX_MAP = {
     "layer_norm1.weight": "v.blk.{layer}.ln1.weight",
     "layer_norm1.bias": "v.blk.{layer}.ln1.bias",
@@ -118,6 +125,7 @@ def pi0_vision_mtmd_tensor_map(header: dict[str, Any]) -> dict[str, str]:
                     target = template.format(layer=layer)
         if target is not None:
             mapping[source] = target
+    mapping.update(resolve_runtime_aliases(header, VISION_MTMD_PROJECTOR_MAP))
     return mapping
 
 
