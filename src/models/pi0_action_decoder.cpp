@@ -140,6 +140,7 @@ void Pi0ActionDecoder::velocity_batch(
     float time,
     const std::vector<float> & actions,
     const std::vector<float> & state_context,
+    const std::vector<PrefixLayerKv> & prefix_layers,
     size_t prefix_tokens,
     std::vector<float> & out) const {
     const Tensor & in_w = *find_tensor("vlacpp.openpi.action_in_proj.weight");
@@ -189,26 +190,51 @@ void Pi0ActionDecoder::velocity_batch(
         for (size_t i = 0; i < positions.size(); ++i) {
             positions[i] = static_cast<int>(prefix_tokens + i);
         }
+        const size_t prefix_kv_width = static_cast<size_t>(kv_heads) * static_cast<size_t>(head_dim);
+        const bool has_prefix_kv =
+            prefix_tokens > 0 &&
+            prefix_layers.size() >= static_cast<size_t>(config_.openpi_action_expert_layers) &&
+            !prefix_layers.empty() &&
+            prefix_layers[0].k.size() == prefix_tokens * prefix_kv_width &&
+            prefix_layers[0].v.size() == prefix_tokens * prefix_kv_width;
+        const size_t kv_tokens = suffix_count + (has_prefix_kv ? prefix_tokens : 0);
         std::vector<float> attention_mask;
         if (!state_context.empty()) {
-            attention_mask.assign(suffix_count * suffix_count, 0.0f);
-            for (size_t key = 1; key < suffix_count; ++key) {
+            attention_mask.assign(suffix_count * kv_tokens, 0.0f);
+            const size_t suffix_key_offset = has_prefix_kv ? prefix_tokens : 0;
+            for (size_t key = suffix_key_offset + 1; key < kv_tokens; ++key) {
                 attention_mask[key] = -INFINITY;
             }
         }
         std::vector<float> hidden = suffix_tokens;
         for (int layer = 0; layer < config_.openpi_action_expert_layers; ++layer) {
             std::vector<float> next;
-            action_expert_.block_masked_batch(
-                layer,
-                hidden,
-                positions,
-                attention_mask,
-                static_cast<int>(suffix_count),
-                heads,
-                kv_heads,
-                head_dim,
-                next);
+            if (has_prefix_kv) {
+                action_expert_.block_prefix_batch(
+                    layer,
+                    hidden,
+                    positions,
+                    prefix_layers[static_cast<size_t>(layer)].k,
+                    prefix_layers[static_cast<size_t>(layer)].v,
+                    attention_mask,
+                    static_cast<int>(prefix_tokens),
+                    static_cast<int>(suffix_count),
+                    heads,
+                    kv_heads,
+                    head_dim,
+                    next);
+            } else {
+                action_expert_.block_masked_batch(
+                    layer,
+                    hidden,
+                    positions,
+                    attention_mask,
+                    static_cast<int>(suffix_count),
+                    heads,
+                    kv_heads,
+                    head_dim,
+                    next);
+            }
             hidden.swap(next);
         }
         action_expert_.final_norm_batch(hidden, static_cast<int>(suffix_count), suffix_tokens);

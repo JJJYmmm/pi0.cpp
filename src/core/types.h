@@ -63,13 +63,20 @@ struct ObservationData {
     std::string prompt;
 };
 
+struct PrefixLayerKv {
+    std::vector<float> k;
+    std::vector<float> v;
+};
+
 struct KvCache {
     bool prefix_valid = false;
     size_t token_count = 0;
+    std::vector<PrefixLayerKv> prefix_layers;
 
     void reset() {
         prefix_valid = false;
         token_count = 0;
+        prefix_layers.clear();
     }
 };
 

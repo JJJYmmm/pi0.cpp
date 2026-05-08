@@ -464,7 +464,7 @@ int main() {
     std::vector<float> velocity;
     const std::vector<float> actions = {0.2f, -0.1f};
     const std::vector<float> state_context = {0.12f, -0.05f};
-    decoder.velocity_batch(0.25f, actions, state_context, 5, velocity);
+    decoder.velocity_batch(0.25f, actions, state_context, {}, 5, velocity);
 
     std::vector<float> action_tokens =
         linear_add(tensors["vlacpp.openpi.action_in_proj.weight"].data,
@@ -512,6 +512,39 @@ int main() {
         rms_norm(tensors["model.paligemma_with_expert.gemma_expert.model.norm.weight"].data, decoder_block, 3, 2);
     decoder_norm.erase(decoder_norm.begin(), decoder_norm.begin() + 2);
     std::vector<float> decoder_expected =
+        linear_add(tensors["vlacpp.openpi.action_out_proj.weight"].data,
+                   tensors["vlacpp.openpi.action_out_proj.bias"].data,
+                   decoder_norm,
+                   2,
+                   2,
+                   1);
+    require_close(velocity, decoder_expected);
+
+    const std::vector<vlacpp::PrefixLayerKv> prefix_layers = {{{0.15f, -0.25f}, {0.35f, 0.45f}}};
+    decoder.velocity_batch(0.25f, actions, state_context, prefix_layers, 1, velocity);
+    const std::vector<int> decoder_prefix_positions = {1, 2, 3};
+    const std::vector<float> decoder_prefix_mask = {
+        0.0f, 0.0f, -INFINITY, -INFINITY,
+        0.0f, 0.0f, 0.0f, 0.0f,
+        0.0f, 0.0f, 0.0f, 0.0f,
+    };
+    expert.block_prefix_batch(
+        0,
+        decoder_suffix,
+        decoder_prefix_positions,
+        prefix_layers[0].k,
+        prefix_layers[0].v,
+        decoder_prefix_mask,
+        1,
+        3,
+        2,
+        1,
+        2,
+        decoder_block);
+    decoder_norm =
+        rms_norm(tensors["model.paligemma_with_expert.gemma_expert.model.norm.weight"].data, decoder_block, 3, 2);
+    decoder_norm.erase(decoder_norm.begin(), decoder_norm.begin() + 2);
+    decoder_expected =
         linear_add(tensors["vlacpp.openpi.action_out_proj.weight"].data,
                    tensors["vlacpp.openpi.action_out_proj.bias"].data,
                    decoder_norm,

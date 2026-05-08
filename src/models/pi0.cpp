@@ -77,7 +77,13 @@ public:
             [&](float time, const std::vector<float> & x, std::vector<float> & v) {
                 if (has_action_decoder) {
                     std::vector<float> action_velocity;
-                    action_decoder_.velocity_batch(time, x, state_context, cache.token_count, action_velocity);
+                    action_decoder_.velocity_batch(
+                        time,
+                        x,
+                        state_context,
+                        cache.prefix_layers,
+                        cache.token_count,
+                        action_velocity);
                     std::copy(action_velocity.begin(), action_velocity.end(), v.begin());
                     return;
                 }
