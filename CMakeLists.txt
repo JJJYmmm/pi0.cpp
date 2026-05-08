@@ -15,6 +15,7 @@ add_library(vlacpp
     src/core/json.cpp
     src/core/preprocess.cpp
     src/models/model.cpp
+    src/models/mtmd_bridge.cpp
     src/models/pi0.cpp
     src/sampling/flow.cpp
 )
@@ -53,6 +54,10 @@ if(VLACPP_BUILD_TESTS)
     add_executable(vlacpp-tests tests/test_runtime.cpp)
     target_link_libraries(vlacpp-tests PRIVATE vlacpp)
     add_test(NAME vlacpp-runtime COMMAND vlacpp-tests)
+    add_executable(vlacpp-mtmd-tests tests/test_mtmd_bridge.cpp)
+    target_include_directories(vlacpp-mtmd-tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_link_libraries(vlacpp-mtmd-tests PRIVATE vlacpp)
+    add_test(NAME vlacpp-mtmd-bridge COMMAND vlacpp-mtmd-tests)
 
     find_package(Python3 COMPONENTS Interpreter)
     if(Python3_Interpreter_FOUND)
