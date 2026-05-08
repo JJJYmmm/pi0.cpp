@@ -8,7 +8,7 @@ sampling, and OpenPI comparison.
 
 | Requirement | Current Evidence | Status |
 | --- | --- | --- |
-| Git branch initialized | `git branch --show-current` reports `pi0-infer`. | Done |
+| Git branch initialized | `git branch --show-current` reports `pi0-infer`; baseline commit is `cd35c54` (`pi0: add restricted gguf inference path`). | Done |
 | HF checkpoint discovery/download path | `tools/inspect-safetensors.py` and `tools/run-action-head-smoke.py` consume `hf://maxqualia/openpi-pi0-corkinbox100-1882950e/model.safetensors` with range reads; pi0.5 action-head smoke was verified against `hf://Tacoin/openpi-pi0.5-libero-onnx/checkpoints/pi05_libero_pytorch/model.safetensors`; `convert-openpi-to-gguf.py --norm-stats` consumes HF pi0.5 Libero config/norm stats. | Partial |
 | GGUF conversion | `tools/convert-openpi-to-gguf.py` writes GGUF for tiny velocity tensors, tiny safetensors, local/remote mapped OpenPI action-head tensors, BF16 remote tensors, and F16 local tensors. Tensor-map manifests preserve `vlacpp.metadata` from safetensors headers when present, so mapped local fixtures infer dimensions without command-line overrides. Metadata-less mapped OpenPI action-head shards infer `action_dim` from action projection tensors and `state_dim` from `state_proj.weight` when available. `tools/inspect-gguf.py` verifies emitted tensor names/shapes. | Partial |
 | Model forward | `src/models/pi0.cpp` implements mock/tiny velocity forward, restricted pi0 state/action-head forward, and restricted pi0.5 action/time-head forward. Full SigLIP/PaliGemma/Gemma backbone is not implemented. | Partial |
