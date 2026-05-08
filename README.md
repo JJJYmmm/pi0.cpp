@@ -18,7 +18,7 @@ behavior before full openpi tensor conversion is wired in.
 - `src/sampling`: flow-matching sampler abstraction.
 - `tools/convert-openpi-to-gguf.py`: openpi metadata/conversion entry point.
 - `examples/pi0-cli`: command-line smoke inference.
-- `third_party/llama.cpp`: intended llama.cpp submodule location.
+- `third_party/llama.cpp`: required llama.cpp submodule for ggml and mtmd.
 
 ## Build
 
@@ -28,12 +28,10 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-The tree builds without `third_party/llama.cpp` for early development. Initialize
-the submodule when wiring real ggml graphs:
+Initialize the required llama.cpp submodule before configuring:
 
 ```sh
 git submodule update --init --recursive
-cmake -S . -B build -DVLACPP_USE_LLAMA_CPP=ON
 ```
 
 ## Smoke Inference

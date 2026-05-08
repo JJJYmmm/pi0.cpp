@@ -1,10 +1,10 @@
 # Third-party dependencies
 
-`third_party/llama.cpp` is a git submodule:
+`third_party/llama.cpp` is a required git submodule:
 
 ```sh
 git submodule update --init --recursive
 ```
 
-The current runtime still builds without the submodule, but when it is present
-`VLACPP_USE_LLAMA_CPP=ON` links the `ggml` target for the pi0 graph work.
+The runtime links llama.cpp's `ggml`, `llama`, and `mtmd` targets for pi0 graph
+work. CMake fails if this submodule is missing.

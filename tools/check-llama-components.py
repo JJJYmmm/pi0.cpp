@@ -34,6 +34,7 @@ def main() -> None:
     parser.add_argument("--build-dir", type=Path)
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--require-ggml-targets", action="store_true")
+    parser.add_argument("--require-mtmd-target", action="store_true")
     args = parser.parse_args()
 
     llama_dir = args.repo / "third_party" / "llama.cpp"
@@ -54,6 +55,8 @@ def main() -> None:
         raise SystemExit("missing llama.cpp component(s): " + ", ".join(missing))
     if args.require_ggml_targets and not result["has_ggml_targets"]:
         raise SystemExit("CMake build dir does not expose expected ggml/llama targets")
+    if args.require_mtmd_target and not result["has_mtmd_target"]:
+        raise SystemExit("CMake build dir does not expose expected mtmd target")
 
     if args.json:
         print(json.dumps(result, indent=2))

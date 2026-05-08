@@ -3,7 +3,6 @@ project(vlacpp VERSION 0.1.0 LANGUAGES C CXX)
 
 option(VLACPP_BUILD_EXAMPLES "Build vlacpp examples" ON)
 option(VLACPP_BUILD_TESTS "Build vlacpp tests" ON)
-option(VLACPP_USE_LLAMA_CPP "Use vendored llama.cpp/ggml submodule when present" ON)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -30,16 +29,19 @@ target_include_directories(vlacpp
 
 target_compile_features(vlacpp PUBLIC cxx_std_17)
 
-if(VLACPP_USE_LLAMA_CPP AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/llama.cpp/CMakeLists.txt")
-    set(LLAMA_BUILD_COMMON OFF CACHE BOOL "" FORCE)
-    set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-    set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-    add_subdirectory(third_party/llama.cpp EXCLUDE_FROM_ALL)
-    if(TARGET ggml)
-        target_link_libraries(vlacpp PRIVATE ggml)
-        target_compile_definitions(vlacpp PRIVATE VLACPP_HAVE_GGML=1)
-    endif()
+if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/llama.cpp/CMakeLists.txt")
+    message(FATAL_ERROR "third_party/llama.cpp is required; run `git submodule update --init --recursive`")
 endif()
+set(LLAMA_BUILD_COMMON ON CACHE BOOL "" FORCE)
+set(LLAMA_BUILD_TOOLS ON CACHE BOOL "" FORCE)
+set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+add_subdirectory(third_party/llama.cpp EXCLUDE_FROM_ALL)
+if(NOT TARGET ggml OR NOT TARGET llama OR NOT TARGET mtmd)
+    message(FATAL_ERROR "llama.cpp must provide ggml, llama, and mtmd targets")
+endif()
+target_link_libraries(vlacpp PRIVATE ggml llama mtmd)
+target_compile_definitions(vlacpp PRIVATE VLACPP_HAVE_GGML=1 VLACPP_HAVE_MTMD=1)
 
 if(VLACPP_BUILD_EXAMPLES)
     add_executable(vlacpp-pi0 examples/pi0-cli/main.cpp)
@@ -96,17 +98,16 @@ if(VLACPP_BUILD_TESTS)
                 --expect-language-layers 2
                 --expect-action-expert-layers 2
         )
-        if(VLACPP_USE_LLAMA_CPP AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/llama.cpp/CMakeLists.txt")
-            add_test(
-                NAME vlacpp-llama-components
-                COMMAND
-                    ${Python3_EXECUTABLE}
-                    "${CMAKE_CURRENT_SOURCE_DIR}/tools/check-llama-components.py"
-                    --repo "${CMAKE_CURRENT_SOURCE_DIR}"
-                    --build-dir "${CMAKE_CURRENT_BINARY_DIR}"
-                    --require-ggml-targets
-            )
-        endif()
+        add_test(
+            NAME vlacpp-llama-components
+            COMMAND
+                ${Python3_EXECUTABLE}
+                "${CMAKE_CURRENT_SOURCE_DIR}/tools/check-llama-components.py"
+                --repo "${CMAKE_CURRENT_SOURCE_DIR}"
+                --build-dir "${CMAKE_CURRENT_BINARY_DIR}"
+                --require-ggml-targets
+                --require-mtmd-target
+        )
         add_test(
             NAME vlacpp-tiny-gguf-convert
             COMMAND
