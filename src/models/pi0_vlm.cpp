@@ -82,13 +82,11 @@ void Pi0Vlm::project_vision_tokens(
         throw std::runtime_error("failed to initialize ggml context");
     }
 
-    ggml_tensor * w = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, vision_width, language_width);
+    ggml_tensor * w = runner.new_weight_2d(ctx, *weight);
     ggml_tensor * x = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, vision_width, token_count);
-    ggml_tensor * b = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, language_width);
+    ggml_tensor * b = runner.new_weight_1d(ctx, *bias);
     std::vector<GgmlInput> inputs;
-    runner.set_input(inputs, w, weight->data.data(), weight->data.size() * sizeof(float));
     runner.set_input(inputs, x, vision_tokens.data(), vision_tokens.size() * sizeof(float));
-    runner.set_input(inputs, b, bias->data.data(), bias->data.size() * sizeof(float));
 
     ggml_tensor * y = ggml_add(ctx, ggml_mul_mat(ctx, w, x), b);
     ggml_cgraph * graph = ggml_new_graph(ctx);

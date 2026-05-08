@@ -3,9 +3,16 @@
 #include "ggml-cpu.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstring>
+#include <cstdlib>
+#include <iomanip>
+#include <iostream>
+#include <map>
 #include <memory>
+#include <mutex>
 #include <stdexcept>
+#include <string>
 
 namespace vlacpp {
 namespace {
@@ -28,7 +35,153 @@ struct BackendState {
     }
 };
 
+struct CachedWeight {
+    ggml_context * ctx = nullptr;
+    ggml_backend_buffer_t buffer = nullptr;
+    ggml_tensor * tensor = nullptr;
+
+    ~CachedWeight() {
+        if (buffer != nullptr) {
+            ggml_backend_buffer_free(buffer);
+        }
+        if (ctx != nullptr) {
+            ggml_free(ctx);
+        }
+    }
+};
+
+struct WeightKey {
+    const Tensor * tensor = nullptr;
+    int n_dims = 0;
+    int64_t ne0 = 0;
+    int64_t ne1 = 0;
+
+    bool operator<(const WeightKey & other) const {
+        if (tensor != other.tensor) {
+            return tensor < other.tensor;
+        }
+        if (n_dims != other.n_dims) {
+            return n_dims < other.n_dims;
+        }
+        if (ne0 != other.ne0) {
+            return ne0 < other.ne0;
+        }
+        return ne1 < other.ne1;
+    }
+};
+
 thread_local std::unique_ptr<BackendState> cuda_state;
+thread_local std::map<WeightKey, std::unique_ptr<CachedWeight>> cuda_weight_cache;
+
+struct ProfileStats {
+    int64_t calls = 0;
+    double alloc_ms = 0.0;
+    double upload_ms = 0.0;
+    double compute_ms = 0.0;
+    double download_ms = 0.0;
+    size_t upload_bytes = 0;
+    size_t download_bytes = 0;
+};
+
+std::mutex profile_mutex;
+std::map<std::string, ProfileStats> profile_stats;
+bool profile_registered = false;
+
+bool profile_enabled() {
+    static const bool enabled = [] {
+        const char * value = std::getenv("VLACPP_PROFILE");
+        return value != nullptr && value[0] != '\0' && std::string(value) != "0";
+    }();
+    return enabled;
+}
+
+double elapsed_ms(std::chrono::steady_clock::time_point start, std::chrono::steady_clock::time_point end) {
+    return std::chrono::duration<double, std::milli>(end - start).count();
+}
+
+void dump_profile() {
+    std::lock_guard<std::mutex> lock(profile_mutex);
+    if (profile_stats.empty()) {
+        return;
+    }
+    std::cerr << "vlacpp ggml profile\n";
+    std::cerr << std::left << std::setw(48) << "label" << std::right << std::setw(8) << "calls"
+              << std::setw(12) << "alloc_ms" << std::setw(12) << "upload_ms"
+              << std::setw(12) << "compute_ms" << std::setw(12) << "download_ms"
+              << std::setw(14) << "upload_mb" << std::setw(14) << "download_mb" << '\n';
+    for (const auto & entry : profile_stats) {
+        const ProfileStats & stats = entry.second;
+        std::cerr << std::left << std::setw(48) << entry.first << std::right << std::setw(8) << stats.calls
+                  << std::setw(12) << std::fixed << std::setprecision(3) << stats.alloc_ms
+                  << std::setw(12) << stats.upload_ms
+                  << std::setw(12) << stats.compute_ms
+                  << std::setw(12) << stats.download_ms
+                  << std::setw(14) << static_cast<double>(stats.upload_bytes) / (1024.0 * 1024.0)
+                  << std::setw(14) << static_cast<double>(stats.download_bytes) / (1024.0 * 1024.0) << '\n';
+    }
+}
+
+void register_profile_dump_once() {
+    if (!profile_enabled()) {
+        return;
+    }
+    std::lock_guard<std::mutex> lock(profile_mutex);
+    if (!profile_registered) {
+        std::atexit(dump_profile);
+        profile_registered = true;
+    }
+}
+
+void record_profile(const char * label, const ProfileStats & delta) {
+    if (!profile_enabled()) {
+        return;
+    }
+    register_profile_dump_once();
+    std::lock_guard<std::mutex> lock(profile_mutex);
+    ProfileStats & stats = profile_stats[label != nullptr ? label : "<unknown>"];
+    stats.calls += delta.calls;
+    stats.alloc_ms += delta.alloc_ms;
+    stats.upload_ms += delta.upload_ms;
+    stats.compute_ms += delta.compute_ms;
+    stats.download_ms += delta.download_ms;
+    stats.upload_bytes += delta.upload_bytes;
+    stats.download_bytes += delta.download_bytes;
+}
+
+ggml_tensor * cache_weight(ggml_backend_t backend, const Tensor & source, int n_dims, int64_t ne0, int64_t ne1) {
+    WeightKey key{&source, n_dims, ne0, ne1};
+    auto it = cuda_weight_cache.find(key);
+    if (it != cuda_weight_cache.end()) {
+        return it->second->tensor;
+    }
+
+    auto cached = std::make_unique<CachedWeight>();
+    ggml_init_params params{};
+    params.mem_size = 2 * ggml_tensor_overhead();
+    params.mem_buffer = nullptr;
+    params.no_alloc = true;
+    cached->ctx = ggml_init(params);
+    if (cached->ctx == nullptr) {
+        throw std::runtime_error("failed to initialize ggml weight context");
+    }
+    if (n_dims == 1) {
+        cached->tensor = ggml_new_tensor_1d(cached->ctx, GGML_TYPE_F32, ne0);
+    } else {
+        cached->tensor = ggml_new_tensor_2d(cached->ctx, GGML_TYPE_F32, ne0, ne1);
+    }
+    if (cached->tensor == nullptr) {
+        throw std::runtime_error("failed to allocate ggml weight tensor metadata");
+    }
+    cached->buffer = ggml_backend_alloc_ctx_tensors(cached->ctx, backend);
+    if (cached->buffer == nullptr) {
+        throw std::runtime_error("failed to allocate ggml backend weight buffer");
+    }
+    ggml_backend_buffer_set_usage(cached->buffer, GGML_BACKEND_BUFFER_USAGE_WEIGHTS);
+    ggml_backend_tensor_set(cached->tensor, source.data.data(), 0, source.data.size() * sizeof(float));
+    ggml_tensor * result = cached->tensor;
+    cuda_weight_cache.emplace(key, std::move(cached));
+    return result;
+}
 
 void set_cpu_threads(ggml_backend_t backend, int n_threads) {
     ggml_backend_reg_t cpu_reg = ggml_backend_dev_backend_reg(ggml_backend_get_device(backend));
@@ -92,6 +245,24 @@ ggml_init_params GgmlRunner::init_params(size_t mem_size) const {
     return params;
 }
 
+ggml_tensor * GgmlRunner::new_weight_1d(ggml_context * ctx, const Tensor & tensor) const {
+    if (uses_backend()) {
+        return cache_weight(gpu_backend_, tensor, 1, tensor.shape[0], 1);
+    }
+    ggml_tensor * weight = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, tensor.shape[0]);
+    std::memcpy(ggml_get_data_f32(weight), tensor.data.data(), tensor.data.size() * sizeof(float));
+    return weight;
+}
+
+ggml_tensor * GgmlRunner::new_weight_2d(ggml_context * ctx, const Tensor & tensor) const {
+    if (uses_backend()) {
+        return cache_weight(gpu_backend_, tensor, 2, tensor.shape[0], tensor.shape[1]);
+    }
+    ggml_tensor * weight = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, tensor.shape[0], tensor.shape[1]);
+    std::memcpy(ggml_get_data_f32(weight), tensor.data.data(), tensor.data.size() * sizeof(float));
+    return weight;
+}
+
 void GgmlRunner::set_input(
     std::vector<GgmlInput> & inputs,
     ggml_tensor * tensor,
@@ -111,18 +282,31 @@ void GgmlRunner::compute(
     const std::vector<GgmlInput> & inputs,
     const char * error_message) const {
     ggml_status status = GGML_STATUS_SUCCESS;
+    ProfileStats profile{};
+    profile.calls = 1;
     if (!uses_backend()) {
+        const auto compute_start = std::chrono::steady_clock::now();
         status = ggml_graph_compute_with_ctx(ctx, graph, std::max(1, backend_config_.n_threads));
+        profile.compute_ms = elapsed_ms(compute_start, std::chrono::steady_clock::now());
     } else {
+        const auto alloc_start = std::chrono::steady_clock::now();
         ggml_backend_sched_reset(sched_);
         if (!ggml_backend_sched_alloc_graph(sched_, graph)) {
             throw std::runtime_error("ggml backend graph allocation failed");
         }
+        profile.alloc_ms = elapsed_ms(alloc_start, std::chrono::steady_clock::now());
+        const auto upload_start = std::chrono::steady_clock::now();
         for (const GgmlInput & input : inputs) {
             ggml_backend_tensor_set(input.tensor, input.data, 0, input.size);
+            profile.upload_bytes += input.size;
         }
+        profile.upload_ms = elapsed_ms(upload_start, std::chrono::steady_clock::now());
+        const auto compute_start = std::chrono::steady_clock::now();
         status = ggml_backend_sched_graph_compute(sched_, graph);
+        profile.compute_ms = elapsed_ms(compute_start, std::chrono::steady_clock::now());
     }
+    profile_label_ = error_message != nullptr ? error_message : "<unknown>";
+    record_profile(profile_label_.c_str(), profile);
     if (status != GGML_STATUS_SUCCESS) {
         throw std::runtime_error(error_message);
     }
@@ -130,7 +314,14 @@ void GgmlRunner::compute(
 
 void GgmlRunner::get_output(const ggml_tensor * tensor, void * data, size_t size) const {
     if (uses_backend()) {
+        const auto download_start = std::chrono::steady_clock::now();
         ggml_backend_tensor_get(tensor, data, 0, size);
+        if (profile_enabled()) {
+            ProfileStats profile{};
+            profile.download_ms = elapsed_ms(download_start, std::chrono::steady_clock::now());
+            profile.download_bytes = size;
+            record_profile(profile_label_.empty() ? "<output>" : profile_label_.c_str(), profile);
+        }
         return;
     }
     std::memcpy(data, tensor->data, size);

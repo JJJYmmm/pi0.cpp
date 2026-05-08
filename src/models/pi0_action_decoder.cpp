@@ -47,13 +47,11 @@ void run_mul_mat_add_batch(
         throw std::runtime_error("failed to initialize ggml context");
     }
 
-    ggml_tensor * w = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, ne0, ne1);
+    ggml_tensor * w = runner.new_weight_2d(ctx, weight);
     ggml_tensor * x = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, ne0, batch);
-    ggml_tensor * b = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, ne1);
+    ggml_tensor * b = runner.new_weight_1d(ctx, bias);
     std::vector<GgmlInput> inputs;
-    runner.set_input(inputs, w, weight.data.data(), weight.data.size() * sizeof(float));
     runner.set_input(inputs, x, input.data(), input.size() * sizeof(float));
-    runner.set_input(inputs, b, bias.data.data(), bias.data.size() * sizeof(float));
 
     ggml_tensor * y = ggml_add(ctx, ggml_mul_mat(ctx, w, x), b);
     if (silu) {

@@ -174,14 +174,11 @@ void Pi0ActionExpert::qkv_batch(
         throw std::runtime_error("failed to initialize ggml context");
     }
 
-    ggml_tensor * qw = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, width, q_out);
-    ggml_tensor * kw = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, width, kv_out);
-    ggml_tensor * vw = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, width, kv_out);
+    ggml_tensor * qw = runner.new_weight_2d(ctx, *q_w);
+    ggml_tensor * kw = runner.new_weight_2d(ctx, *k_w);
+    ggml_tensor * vw = runner.new_weight_2d(ctx, *v_w);
     ggml_tensor * x = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, width, batch);
     std::vector<GgmlInput> inputs;
-    runner.set_input(inputs, qw, q_w->data.data(), q_w->data.size() * sizeof(float));
-    runner.set_input(inputs, kw, k_w->data.data(), k_w->data.size() * sizeof(float));
-    runner.set_input(inputs, vw, v_w->data.data(), v_w->data.size() * sizeof(float));
     runner.set_input(inputs, x, tokens.data(), tokens.size() * sizeof(float));
 
     ggml_tensor * q_out_tensor = ggml_mul_mat(ctx, qw, x);
@@ -390,10 +387,9 @@ void Pi0ActionExpert::attention_out_batch(
         throw std::runtime_error("failed to initialize ggml context");
     }
 
-    ggml_tensor * w = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, q_out, width);
+    ggml_tensor * w = runner.new_weight_2d(ctx, *out_w);
     ggml_tensor * x = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, q_out, batch);
     std::vector<GgmlInput> inputs;
-    runner.set_input(inputs, w, out_w->data.data(), out_w->data.size() * sizeof(float));
     runner.set_input(inputs, x, values.data(), values.size() * sizeof(float));
 
     ggml_tensor * y = ggml_mul_mat(ctx, w, x);
@@ -443,14 +439,11 @@ void Pi0ActionExpert::mlp_batch(
         throw std::runtime_error("failed to initialize ggml context");
     }
 
-    ggml_tensor * gate = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, width, hidden);
-    ggml_tensor * up = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, width, hidden);
-    ggml_tensor * down = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, hidden, width);
+    ggml_tensor * gate = runner.new_weight_2d(ctx, *gate_w);
+    ggml_tensor * up = runner.new_weight_2d(ctx, *up_w);
+    ggml_tensor * down = runner.new_weight_2d(ctx, *down_w);
     ggml_tensor * x = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, width, batch);
     std::vector<GgmlInput> inputs;
-    runner.set_input(inputs, gate, gate_w->data.data(), gate_w->data.size() * sizeof(float));
-    runner.set_input(inputs, up, up_w->data.data(), up_w->data.size() * sizeof(float));
-    runner.set_input(inputs, down, down_w->data.data(), down_w->data.size() * sizeof(float));
     runner.set_input(inputs, x, tokens.data(), tokens.size() * sizeof(float));
 
     ggml_tensor * gate_out = ggml_gelu(ctx, ggml_mul_mat(ctx, gate, x));

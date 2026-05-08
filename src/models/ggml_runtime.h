@@ -6,6 +6,7 @@
 #include "ggml.h"
 
 #include <cstddef>
+#include <string>
 #include <vector>
 
 namespace vlacpp {
@@ -26,6 +27,8 @@ public:
 
     bool uses_backend() const;
     ggml_init_params init_params(size_t mem_size) const;
+    ggml_tensor * new_weight_1d(ggml_context * ctx, const Tensor & tensor) const;
+    ggml_tensor * new_weight_2d(ggml_context * ctx, const Tensor & tensor) const;
 
     void set_input(
         std::vector<GgmlInput> & inputs,
@@ -46,6 +49,7 @@ private:
     ggml_backend_t gpu_backend_ = nullptr;
     ggml_backend_t cpu_backend_ = nullptr;
     ggml_backend_sched_t sched_ = nullptr;
+    mutable std::string profile_label_;
 };
 
 } // namespace vlacpp
