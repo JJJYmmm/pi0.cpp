@@ -379,7 +379,7 @@ int main() {
     std::vector<float> velocity;
     const std::vector<float> actions = {0.2f, -0.1f};
     const std::vector<float> state_context = {0.12f, -0.05f};
-    decoder.velocity_batch(0.25f, actions, state_context, velocity);
+    decoder.velocity_batch(0.25f, actions, state_context, 5, velocity);
 
     std::vector<float> action_tokens =
         linear_add(tensors["vlacpp.openpi.action_in_proj.weight"].data,
@@ -416,7 +416,7 @@ int main() {
                    2);
     decoder_suffix.insert(decoder_suffix.begin(), state_context.begin(), state_context.end());
     std::vector<float> decoder_block;
-    const std::vector<int> decoder_positions = {0, 1, 2};
+    const std::vector<int> decoder_positions = {5, 6, 7};
     const std::vector<float> decoder_mask = {
         0.0f, -INFINITY, -INFINITY,
         0.0f, 0.0f, 0.0f,

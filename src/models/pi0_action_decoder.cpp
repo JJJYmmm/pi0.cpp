@@ -140,6 +140,7 @@ void Pi0ActionDecoder::velocity_batch(
     float time,
     const std::vector<float> & actions,
     const std::vector<float> & state_context,
+    size_t prefix_tokens,
     std::vector<float> & out) const {
     const Tensor & in_w = *find_tensor("vlacpp.openpi.action_in_proj.weight");
     const Tensor & in_b = *find_tensor("vlacpp.openpi.action_in_proj.bias");
@@ -186,7 +187,7 @@ void Pi0ActionDecoder::velocity_batch(
         const int kv_heads = config_.openpi_action_expert_kv_out / head_dim;
         std::vector<int> positions(suffix_count, 0);
         for (size_t i = 0; i < positions.size(); ++i) {
-            positions[i] = static_cast<int>(i);
+            positions[i] = static_cast<int>(prefix_tokens + i);
         }
         std::vector<float> attention_mask;
         if (!state_context.empty()) {

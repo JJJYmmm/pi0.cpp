@@ -22,6 +22,7 @@ public:
         float time,
         const std::vector<float> & actions,
         const std::vector<float> & state_context,
+        size_t prefix_tokens,
         std::vector<float> & out) const;
 
 private:
