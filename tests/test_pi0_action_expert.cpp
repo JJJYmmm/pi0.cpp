@@ -63,10 +63,13 @@ std::vector<float> self_attention(
     const std::vector<float> & v,
     int tokens,
     int heads,
+    int kv_heads,
     int head_dim) {
+    const int repeat = heads / kv_heads;
     std::vector<float> result(q.size(), 0.0f);
     const float scale = 1.0f / std::sqrt(static_cast<float>(head_dim));
     for (int head = 0; head < heads; ++head) {
+        const int kv_head = head / repeat;
         for (int tq = 0; tq < tokens; ++tq) {
             std::vector<float> scores(static_cast<size_t>(tokens), 0.0f);
             float max_score = -INFINITY;
@@ -78,7 +81,7 @@ std::vector<float> self_attention(
                             static_cast<size_t>(head_dim) +
                         static_cast<size_t>(dim);
                     const size_t k_index =
-                        (static_cast<size_t>(tk) * static_cast<size_t>(heads) + static_cast<size_t>(head)) *
+                        (static_cast<size_t>(tk) * static_cast<size_t>(kv_heads) + static_cast<size_t>(kv_head)) *
                             static_cast<size_t>(head_dim) +
                         static_cast<size_t>(dim);
                     score += q[q_index] * k[k_index];
@@ -95,7 +98,7 @@ std::vector<float> self_attention(
                 float value = 0.0f;
                 for (int tk = 0; tk < tokens; ++tk) {
                     const size_t v_index =
-                        (static_cast<size_t>(tk) * static_cast<size_t>(heads) + static_cast<size_t>(head)) *
+                        (static_cast<size_t>(tk) * static_cast<size_t>(kv_heads) + static_cast<size_t>(kv_head)) *
                             static_cast<size_t>(head_dim) +
                         static_cast<size_t>(dim);
                     value += scores[static_cast<size_t>(tk)] / denom * v[v_index];
@@ -199,8 +202,21 @@ int main() {
         0.1f, 0.4f, -0.2f, 0.5f,
     };
     std::vector<float> attention_core;
-    expert.self_attention_batch(attention_q, attention_k, attention_v, 3, 2, 2, attention_core);
-    require_close(attention_core, self_attention(attention_q, attention_k, attention_v, 3, 2, 2));
+    expert.self_attention_batch(attention_q, attention_k, attention_v, 3, 2, 2, 2, attention_core);
+    require_close(attention_core, self_attention(attention_q, attention_k, attention_v, 3, 2, 2, 2));
+
+    const std::vector<float> gqa_k = {
+        -0.2f, 0.4f,
+        0.6f, -0.1f,
+        -0.3f, 0.8f,
+    };
+    const std::vector<float> gqa_v = {
+        0.9f, -0.6f,
+        -0.5f, 0.3f,
+        0.1f, 0.4f,
+    };
+    expert.self_attention_batch(attention_q, gqa_k, gqa_v, 3, 2, 1, 2, attention_core);
+    require_close(attention_core, self_attention(attention_q, gqa_k, gqa_v, 3, 2, 1, 2));
 
     std::vector<float> attention_out;
     const std::vector<float> attention_values = {0.25f, -0.5f, 0.75f, 1.0f, -1.0f, 0.5f, 0.0f, 0.2f};

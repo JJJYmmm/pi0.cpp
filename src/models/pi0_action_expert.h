@@ -28,6 +28,7 @@ public:
         const std::vector<float> & v,
         int tokens,
         int heads,
+        int kv_heads,
         int head_dim,
         std::vector<float> & out) const;
     void attention_out_batch(int layer, const std::vector<float> & values, int batch, std::vector<float> & out) const;

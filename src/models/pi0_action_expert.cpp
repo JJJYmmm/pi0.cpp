@@ -200,18 +200,21 @@ void Pi0ActionExpert::self_attention_batch(
     const std::vector<float> & v,
     int tokens,
     int heads,
+    int kv_heads,
     int head_dim,
     std::vector<float> & out) const {
-    if (tokens <= 0 || heads <= 0 || head_dim <= 0) {
+    if (tokens <= 0 || heads <= 0 || kv_heads <= 0 || head_dim <= 0 || heads % kv_heads != 0) {
         throw std::invalid_argument("invalid pi0 action expert attention dimensions");
     }
-    const size_t qkv_size =
+    const size_t q_size =
         static_cast<size_t>(tokens) * static_cast<size_t>(heads) * static_cast<size_t>(head_dim);
-    if (q.size() != qkv_size || k.size() != qkv_size || v.size() != qkv_size) {
+    const size_t kv_size =
+        static_cast<size_t>(tokens) * static_cast<size_t>(kv_heads) * static_cast<size_t>(head_dim);
+    if (q.size() != q_size || k.size() != kv_size || v.size() != kv_size) {
         throw std::invalid_argument("action expert attention inputs must have matching Q/K/V shape");
     }
 
-    const size_t tensor_bytes = qkv_size * 4 * sizeof(float);
+    const size_t tensor_bytes = (q_size * 2 + kv_size * 2) * sizeof(float);
     const size_t context_size = std::max<size_t>(64 * 1024 * 1024, tensor_bytes * 8 + 1024 * 1024);
     ggml_init_params params{};
     params.mem_size = context_size;
@@ -223,11 +226,15 @@ void Pi0ActionExpert::self_attention_batch(
     }
 
     ggml_tensor * q_cur = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, head_dim, heads, tokens);
-    ggml_tensor * k_cur = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, head_dim, heads, tokens);
-    ggml_tensor * v_cur = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, head_dim, heads, tokens);
+    ggml_tensor * k_cur = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, head_dim, kv_heads, tokens);
+    ggml_tensor * v_cur = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, head_dim, kv_heads, tokens);
     std::memcpy(ggml_get_data_f32(q_cur), q.data(), q.size() * sizeof(float));
     std::memcpy(ggml_get_data_f32(k_cur), k.data(), k.size() * sizeof(float));
     std::memcpy(ggml_get_data_f32(v_cur), v.data(), v.size() * sizeof(float));
+    if (kv_heads != heads) {
+        k_cur = ggml_repeat(ctx, k_cur, q_cur);
+        v_cur = ggml_repeat(ctx, v_cur, q_cur);
+    }
 
     ggml_tensor * q_perm = ggml_permute(ctx, q_cur, 0, 2, 1, 3);
     ggml_tensor * k_perm = ggml_permute(ctx, k_cur, 0, 2, 1, 3);
@@ -249,7 +256,7 @@ void Pi0ActionExpert::self_attention_batch(
 
     out.assign(
         ggml_get_data_f32(y),
-        ggml_get_data_f32(y) + qkv_size);
+        ggml_get_data_f32(y) + q_size);
     ggml_free(ctx);
 }
 
