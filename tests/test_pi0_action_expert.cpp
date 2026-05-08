@@ -1,6 +1,7 @@
 #include "models/pi0_action_expert.h"
 #include "models/pi0_action_decoder.h"
 #include "models/pi0_language_prefix.h"
+#include "models/pi0_vlm.h"
 
 #include <algorithm>
 #include <cmath>
@@ -244,6 +245,7 @@ int main() {
     config.openpi_language_kv_out = 2;
     config.openpi_language_mlp_width = 3;
     config.openpi_language_layers = 1;
+    config.openpi_vision_width = 3;
     vlacpp::BackendConfig backend;
     backend.n_threads = 1;
     vlacpp::TensorMap tensors;
@@ -253,6 +255,8 @@ int main() {
     const std::string language_mlp_prefix = language_prefix + "mlp.";
     tensors["model.paligemma_with_expert.gemma_expert.model.norm.weight"] = tensor({2}, {0.1f, -0.15f});
     tensors["model.paligemma_with_expert.paligemma.model.language_model.norm.weight"] = tensor({2}, {-0.05f, 0.12f});
+    tensors["vlacpp.openpi.vision_projector.weight"] = tensor({3, 2}, {0.2f, -0.1f, 0.3f, 0.4f, -0.2f, 0.5f});
+    tensors["vlacpp.openpi.vision_projector.bias"] = tensor({2}, {0.05f, -0.08f});
     tensors[layer_prefix + "input_layernorm.weight"] = tensor({2}, {-0.1f, 0.25f});
     tensors[layer_prefix + "post_attention_layernorm.weight"] = tensor({2}, {0.05f, -0.2f});
     tensors[layer_prefix + "self_attn.q_proj.weight"] =
@@ -486,6 +490,23 @@ int main() {
                  2,
                  2);
     require_close(language_actual, language_expected);
+
+    vlacpp::Pi0Vlm vlm(config, backend, tensors);
+    if (!vlm.has_vision_projector()) {
+        std::cerr << "expected vision projector\n";
+        return 1;
+    }
+    const std::vector<float> vision_tokens = {0.2f, -0.4f, 0.6f, 0.1f, 0.3f, -0.2f};
+    std::vector<float> projected;
+    vlm.project_vision_tokens(vision_tokens, 2, projected);
+    require_close(
+        projected,
+        linear_add(tensors["vlacpp.openpi.vision_projector.weight"].data,
+                   tensors["vlacpp.openpi.vision_projector.bias"].data,
+                   vision_tokens,
+                   2,
+                   3,
+                   2));
 
     tensors["vlacpp.openpi.action_in_proj.weight"] = tensor({1, 2}, {0.4f, -0.25f});
     tensors["vlacpp.openpi.action_in_proj.bias"] = tensor({2}, {0.05f, -0.1f});

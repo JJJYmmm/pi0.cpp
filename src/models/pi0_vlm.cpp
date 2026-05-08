@@ -1,7 +1,12 @@
 #include "models/pi0_vlm.h"
 
+#include "ggml-cpu.h"
+#include "ggml.h"
+
 #include <algorithm>
+#include <cstring>
 #include <numeric>
+#include <stdexcept>
 
 namespace vlacpp {
 namespace {
@@ -15,12 +20,70 @@ float mean_or_zero(const std::vector<float> & values) {
 
 } // namespace
 
-Pi0Vlm::Pi0Vlm(const ModelConfig & config, const TensorMap & tensors)
-    : config_(config), tensors_(tensors) {}
+Pi0Vlm::Pi0Vlm(const ModelConfig & config, const BackendConfig & backend, const TensorMap & tensors)
+    : config_(config), backend_(backend), tensors_(tensors) {}
 
 bool Pi0Vlm::has_vision_projector() const {
     return find_tensor("vlacpp.openpi.vision_projector.weight") != nullptr &&
         find_tensor("vlacpp.openpi.vision_projector.bias") != nullptr;
+}
+
+void Pi0Vlm::project_vision_tokens(
+    const std::vector<float> & vision_tokens,
+    int token_count,
+    std::vector<float> & out) const {
+    const Tensor * weight = find_tensor("vlacpp.openpi.vision_projector.weight");
+    const Tensor * bias = find_tensor("vlacpp.openpi.vision_projector.bias");
+    if (weight == nullptr || bias == nullptr) {
+        throw std::invalid_argument("missing pi0 vision projector tensors");
+    }
+    const int64_t vision_width = config_.openpi_vision_width;
+    const int64_t language_width = config_.openpi_language_width;
+    if (token_count <= 0 ||
+        vision_width <= 0 ||
+        language_width <= 0 ||
+        weight->shape.size() != 2 ||
+        weight->shape[0] != vision_width ||
+        weight->shape[1] != language_width ||
+        bias->shape.size() != 1 ||
+        bias->shape[0] != language_width ||
+        vision_tokens.size() != static_cast<size_t>(token_count) * static_cast<size_t>(vision_width) ||
+        weight->data.size() != static_cast<size_t>(vision_width) * static_cast<size_t>(language_width) ||
+        bias->data.size() != static_cast<size_t>(language_width)) {
+        throw std::invalid_argument("pi0 vision projector tensors have incompatible shape");
+    }
+
+    const size_t tensor_bytes =
+        (weight->data.size() + bias->data.size() + vision_tokens.size()) * sizeof(float) +
+        static_cast<size_t>(token_count) * static_cast<size_t>(language_width) * sizeof(float);
+    const size_t context_size = std::max<size_t>(64 * 1024 * 1024, tensor_bytes * 4 + 1024 * 1024);
+    ggml_init_params params{};
+    params.mem_size = context_size;
+    ggml_context * ctx = ggml_init(params);
+    if (ctx == nullptr) {
+        throw std::runtime_error("failed to initialize ggml context");
+    }
+
+    ggml_tensor * w = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, vision_width, language_width);
+    ggml_tensor * x = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, vision_width, token_count);
+    ggml_tensor * b = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, language_width);
+    std::memcpy(ggml_get_data_f32(w), weight->data.data(), weight->data.size() * sizeof(float));
+    std::memcpy(ggml_get_data_f32(x), vision_tokens.data(), vision_tokens.size() * sizeof(float));
+    std::memcpy(ggml_get_data_f32(b), bias->data.data(), bias->data.size() * sizeof(float));
+
+    ggml_tensor * y = ggml_add(ctx, ggml_mul_mat(ctx, w, x), b);
+    ggml_cgraph * graph = ggml_new_graph(ctx);
+    ggml_build_forward_expand(graph, y);
+    const ggml_status status = ggml_graph_compute_with_ctx(ctx, graph, std::max(1, backend_.n_threads));
+    if (status != GGML_STATUS_SUCCESS) {
+        ggml_free(ctx);
+        throw std::runtime_error("ggml pi0 vision projector graph compute failed");
+    }
+
+    out.assign(
+        ggml_get_data_f32(y),
+        ggml_get_data_f32(y) + static_cast<size_t>(token_count) * static_cast<size_t>(language_width));
+    ggml_free(ctx);
 }
 
 void Pi0Vlm::prefill_prefix(KvCache & cache, const ObservationData & observation) const {

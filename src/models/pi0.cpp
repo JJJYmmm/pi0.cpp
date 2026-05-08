@@ -19,7 +19,7 @@ public:
         : config_(std::move(config)),
           backend_(backend),
           tensors_(std::move(tensors)),
-          vlm_(config_, tensors_),
+          vlm_(config_, backend_, tensors_),
           action_decoder_(config_, backend_, tensors_) {}
 
     const ModelConfig & config() const override {
