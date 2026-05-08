@@ -192,7 +192,7 @@ Latest verified smoke outputs:
   `ms://lerobot/pi0/model.safetensors` uses a ModelScope-style `model.` prefix;
   the action-head mapper now aliases those prefixed tensor names, and a
   range-read restricted GGUF smoke produced `horizon=32`, `action_dim=32`, and
-  capability `restricted-pi0-state-action-head`.
+  capability `restricted-pi0-action-projector`.
   The same action/projector smoke now also passes from the local
   `ckpts/lerobot-pi0/model.safetensors` file with `tensor_count=12`,
   `action_count=1024`, and first actions `[2.37046, 0.0954423, 3.3588]`.

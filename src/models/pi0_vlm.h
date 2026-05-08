@@ -15,13 +15,17 @@ struct Pi0VlmSignals {
 
 class Pi0Vlm {
 public:
-    explicit Pi0Vlm(const ModelConfig & config);
+    Pi0Vlm(const ModelConfig & config, const TensorMap & tensors);
 
+    bool has_vision_projector() const;
     void prefill_prefix(KvCache & cache, const ObservationData & observation) const;
     Pi0VlmSignals encode(const ObservationData & observation) const;
 
 private:
+    const Tensor * find_tensor(const std::string & name) const;
+
     const ModelConfig & config_;
+    const TensorMap & tensors_;
 };
 
 } // namespace vlacpp

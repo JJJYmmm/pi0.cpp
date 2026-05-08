@@ -119,6 +119,15 @@ def main() -> None:
         state_dim = int(metadata["vlacpp.state_dim"])
         action_dim = int(metadata["vlacpp.action_dim"])
         action_horizon = int(metadata["vlacpp.action_horizon"])
+        info_raw = subprocess.check_output([str(args.binary), "--model", str(gguf), "--info"], text=True)
+        info = json.loads(info_raw)
+        expected_capability = {
+            "pi0": "restricted-pi0-state-action-head",
+            "pi0-action-projector": "restricted-pi0-action-projector",
+            "pi05": "restricted-pi05-action-head",
+        }[args.family]
+        if info["capability"] != expected_capability:
+            raise SystemExit(f"unexpected capability {info['capability']}; expected {expected_capability}")
 
         state = ",".join(["0"] * state_dim)
         action_raw = subprocess.check_output(
@@ -152,6 +161,7 @@ def main() -> None:
                     "source": source,
                     "work_dir": str(work_dir),
                     "gguf": str(gguf),
+                    "capability": info["capability"],
                     "tensor_count": inspect["tensor_count"],
                     "action_count": len(actions),
                     "first": actions[:3],

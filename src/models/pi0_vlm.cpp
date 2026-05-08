@@ -15,7 +15,13 @@ float mean_or_zero(const std::vector<float> & values) {
 
 } // namespace
 
-Pi0Vlm::Pi0Vlm(const ModelConfig & config) : config_(config) {}
+Pi0Vlm::Pi0Vlm(const ModelConfig & config, const TensorMap & tensors)
+    : config_(config), tensors_(tensors) {}
+
+bool Pi0Vlm::has_vision_projector() const {
+    return find_tensor("vlacpp.openpi.vision_projector.weight") != nullptr &&
+        find_tensor("vlacpp.openpi.vision_projector.bias") != nullptr;
+}
 
 void Pi0Vlm::prefill_prefix(KvCache & cache, const ObservationData & observation) const {
     if (cache.prefix_valid) {
@@ -55,6 +61,14 @@ Pi0VlmSignals Pi0Vlm::encode(const ObservationData & observation) const {
     signals.legacy_features[3] = signals.prompt_signal;
     signals.target_base = 0.5f * signals.state_mean + 0.25f * signals.image_mean + 0.25f * signals.prompt_signal;
     return signals;
+}
+
+const Tensor * Pi0Vlm::find_tensor(const std::string & name) const {
+    auto it = tensors_.find(name);
+    if (it == tensors_.end()) {
+        return nullptr;
+    }
+    return &it->second;
 }
 
 } // namespace vlacpp

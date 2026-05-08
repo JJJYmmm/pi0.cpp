@@ -19,7 +19,7 @@ public:
         : config_(std::move(config)),
           backend_(backend),
           tensors_(std::move(tensors)),
-          vlm_(config_),
+          vlm_(config_, tensors_),
           action_decoder_(config_, backend_, tensors_) {}
 
     const ModelConfig & config() const override {
@@ -31,6 +31,9 @@ public:
             return "restricted-pi05-action-head";
         }
         if (action_decoder_.has_pi0_action_head()) {
+            if (vlm_.has_vision_projector()) {
+                return "restricted-pi0-action-projector";
+            }
             return "restricted-pi0-state-action-head";
         }
         if (find_tensor("pi0.velocity.weight") != nullptr) {
