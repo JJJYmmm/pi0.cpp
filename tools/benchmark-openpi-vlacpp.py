@@ -234,8 +234,8 @@ def main() -> None:
         )
         openpi_elapsed = time.perf_counter() - start
 
-        vlacpp_policy.reset_cache()
         start = time.perf_counter()
+        vlacpp_policy.reset_cache()
         vlacpp_actions = vlacpp_policy.infer(
             state=obs["state"],
             images={args.image_key: obs[args.image_key]},
