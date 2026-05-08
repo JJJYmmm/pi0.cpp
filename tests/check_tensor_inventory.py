@@ -32,10 +32,15 @@ def main() -> None:
             f"unexpected mapped coverage: {inventory['mapped_tensor_count']}/{inventory['total_tensor_count']}"
         )
     groups = inventory["groups"]
+    subgroups = inventory["subgroups"]
     expected_groups = args.group or ["action_in_proj", "action_out_proj", "action_time_mlp_in", "action_time_mlp_out", "state_proj"]
     for group in expected_groups:
         if groups.get(group, {}).get("total") != groups.get(group, {}).get("mapped"):
             raise SystemExit(f"group {group} is not fully mapped: {groups.get(group)}")
+    for item in inventory["tensors"]:
+        subgroup = item["subgroup"]
+        if subgroup not in subgroups:
+            raise SystemExit(f"missing subgroup summary for {subgroup}")
     print(json.dumps({"status": "ok", "mapped": inventory["mapped_tensor_count"]}))
 
 

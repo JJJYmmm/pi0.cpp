@@ -147,6 +147,10 @@ Latest verified smoke outputs:
   10/777 tensors; a real pi0.5 HF header inventory for
   `hf://Tacoin/openpi-pi0.5-libero-onnx/checkpoints/pi05_libero_pytorch/model.safetensors`
   maps 8/812 tensors. The remaining tensors are `paligemma_with_expert`.
+  pi0 subgroup inventory breaks that down into
+  `paligemma_with_expert.paligemma.model` (602 tensors),
+  `paligemma_with_expert.gemma_expert.model.layers.*` (162 tensors), and a
+  small number of head/norm tensors.
 - Runtime does not implement SigLIP image encoder, PaliGemma/Gemma prefix/suffix
   transformer, KV cache execution, or full pi0.5 AdaRMS conditioning. The
   restricted pi0.5 path only approximates the time-conditioned action head.

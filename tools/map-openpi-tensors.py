@@ -64,24 +64,42 @@ def tensor_group(name: str) -> str:
     return name.split(".", 1)[0]
 
 
+def tensor_subgroup(name: str) -> str:
+    parts = name.split(".")
+    if len(parts) >= 5 and parts[0] == "paligemma_with_expert" and parts[3] == "layers":
+        return ".".join(parts[:4] + ["*"])
+    if len(parts) >= 3:
+        return ".".join(parts[:3])
+    if len(parts) >= 2:
+        return ".".join(parts[:2])
+    return name
+
+
 def build_inventory(rows: list[dict[str, Any]], mapping: dict[str, str]) -> dict[str, Any]:
     mapped_sources = set(mapping)
     groups: dict[str, dict[str, int]] = {}
+    subgroups: dict[str, dict[str, int]] = {}
     tensors = []
     for row in rows:
         name = row["name"]
         group = tensor_group(name)
+        subgroup = tensor_subgroup(name)
         if group not in groups:
             groups[group] = {"total": 0, "mapped": 0}
+        if subgroup not in subgroups:
+            subgroups[subgroup] = {"total": 0, "mapped": 0}
         groups[group]["total"] += 1
+        subgroups[subgroup]["total"] += 1
         mapped = name in mapped_sources
         if mapped:
             groups[group]["mapped"] += 1
+            subgroups[subgroup]["mapped"] += 1
         item = {
             "name": name,
             "dtype": row["dtype"],
             "shape": row["shape"],
             "group": group,
+            "subgroup": subgroup,
             "mapped": mapped,
         }
         if mapped:
@@ -92,6 +110,7 @@ def build_inventory(rows: list[dict[str, Any]], mapping: dict[str, str]) -> dict
         "mapped_tensor_count": sum(1 for item in tensors if item["mapped"]),
         "unmapped_tensor_count": sum(1 for item in tensors if not item["mapped"]),
         "groups": groups,
+        "subgroups": subgroups,
         "tensors": tensors,
     }
 

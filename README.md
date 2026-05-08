@@ -232,6 +232,10 @@ both from vlacpp-named fixtures and from OpenPI-named safetensors through the
 mapped/unmapped counts for planning the remaining full-model tensor map.
 Current real HF action-head maps cover 10/777 pi0 tensors and 8/812 pi0.5
 tensors; the unmapped tensors are the `paligemma_with_expert` backbone.
+Inventory subgroup summaries normalize repeated layer indices so the remaining
+backbone work is visible at block granularity, for example pi0 splits into
+`paligemma_with_expert.paligemma.model` and
+`paligemma_with_expert.gemma_expert.model.layers.*`.
 
 See `docs/pi0-infer-audit.md` for the current prompt-to-artifact completion
 audit and the remaining gaps before full OpenPI parity.
