@@ -34,6 +34,9 @@ Initialize the required llama.cpp submodule before configuring:
 git submodule update --init --recursive
 ```
 
+The converter writes GGUF through llama.cpp's `gguf-py` module from the
+submodule, so the submodule is also required for conversion tools.
+
 ## Smoke Inference
 
 Create a mock metadata file:

@@ -9,12 +9,19 @@ Current verified boundary:
 - `ggml`, `ggml-base`, `ggml-cpu`, `llama`, and `mtmd` are visible CMake targets.
 - `tools/mtmd/clip.cpp`, `tools/mtmd/clip-graph.h`, and
   `tools/mtmd/models/siglip.cpp` are present in the submodule.
+- `src/models/mtmd_bridge.cpp` includes and links the public `mtmd` API through
+  `vlacpp`; `vlacpp-mtmd-bridge` verifies the default media marker and context
+  params at runtime.
+- `tools/gguf_writer.py` uses llama.cpp's `gguf-py` `GGUFWriter` instead of a
+  local hand-written GGUF serializer.
 
 Implication for pi0:
 
 - Use the linked `ggml` and `mtmd` targets for the first C++ graph builder.
 - Reuse the mtmd SigLIP/ViT source and public library boundary for the image
   encoder while preserving the existing vlacpp C ABI.
+- Keep conversion on the llama.cpp `gguf-py` writer path and add only
+  OpenPI-specific tensor naming/metadata logic in this repo.
 - Keep OpenPI-specific observation preprocessing, action head wiring, flow
   sampling, and policy comparison in this repo.
 
