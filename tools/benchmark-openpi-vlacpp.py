@@ -26,7 +26,7 @@ def import_compare_tools(repo: Path) -> Any:
 
 
 class OpenPiPytorchPrefixPolicy:
-    def __init__(self, *, config_name: str, checkpoint: str, device_name: str | None) -> None:
+    def __init__(self, *, config_name: str, checkpoint: str, device_name: str | None, n_threads: int) -> None:
         try:
             import torch
             from safetensors import safe_open
@@ -39,6 +39,8 @@ class OpenPiPytorchPrefixPolicy:
             raise SystemExit("official OpenPI PyTorch dependencies are not installed") from exc
 
         self.torch = torch
+        if n_threads > 0:
+            torch.set_num_threads(n_threads)
         self.openpi_model = openpi_model
         self.openpi_tokenizer = openpi_tokenizer
         self.checkpoint = Path(checkpoint)
@@ -172,6 +174,7 @@ def main() -> None:
     parser.add_argument("--device", choices=["cpu", "cuda"], default="cpu", help="device to use for both OpenPI and vlacpp")
     parser.add_argument("--pytorch-device", default=None, help="override OpenPI device, e.g. cuda:0")
     parser.add_argument("--vlacpp-backend", choices=["cpu", "cuda"], default=None)
+    parser.add_argument("--threads", type=int, default=0, help="CPU threads for both PyTorch and vlacpp; 0 keeps runtime defaults")
     parser.add_argument("--allow-mixed-device", action="store_true")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
@@ -190,6 +193,7 @@ def main() -> None:
         config_name=args.openpi_config,
         checkpoint=args.openpi_checkpoint,
         device_name=pytorch_device,
+        n_threads=args.threads,
     )
     openpi_device_type = openpi.device.type
     if openpi_device_type != vlacpp_backend_name and not args.allow_mixed_device:
@@ -202,6 +206,7 @@ def main() -> None:
         args.vlacpp_model,
         library_path=args.vlacpp_library,
         backend=vlacpp_backend,
+        n_threads=args.threads,
         seed=args.seed,
         flow_steps=args.steps,
     )
@@ -264,6 +269,8 @@ def main() -> None:
         "fair_device_compare": openpi_device_type == vlacpp_backend_name,
         "openpi_device": str(openpi.device),
         "vlacpp_backend": vlacpp_backend_name,
+        "threads": args.threads,
+        "openpi_num_threads": int(openpi.torch.get_num_threads()),
         "capability": vlacpp_policy.capability,
         "shape": list(vlacpp_actions.shape),
         "max_abs": max(max_abs_values),
