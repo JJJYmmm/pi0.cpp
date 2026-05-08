@@ -21,11 +21,19 @@ float mean_or_zero(const std::vector<float> & values) {
 } // namespace
 
 Pi0Vlm::Pi0Vlm(const ModelConfig & config, const BackendConfig & backend, const TensorMap & tensors)
-    : config_(config), backend_(backend), tensors_(tensors), language_prefix_(config, backend, tensors) {}
+    : config_(config),
+      backend_(backend),
+      tensors_(tensors),
+      language_prefix_(config, backend, tensors),
+      vision_mtmd_(config, backend) {}
 
 bool Pi0Vlm::has_vision_projector() const {
     return find_tensor("vlacpp.openpi.vision_projector.weight") != nullptr &&
         find_tensor("vlacpp.openpi.vision_projector.bias") != nullptr;
+}
+
+bool Pi0Vlm::has_mtmd_vision_encoder() const {
+    return vision_mtmd_.available() && vision_mtmd_.output_width() == config_.openpi_language_width;
 }
 
 bool Pi0Vlm::has_language_prefix() const {
@@ -136,6 +144,15 @@ void Pi0Vlm::prefill_prefix_from_embeddings(
 
 void Pi0Vlm::prefill_prefix(KvCache & cache, const ObservationData & observation) const {
     if (cache.prefix_valid) {
+        return;
+    }
+    if (has_mtmd_vision_encoder() && has_language_prefix() && !observation.images.empty()) {
+        std::vector<float> embeddings;
+        int token_count = 0;
+        if (!vision_mtmd_.encode(observation.images, backend_.n_threads, embeddings, token_count)) {
+            throw std::runtime_error("mtmd pi0 vision encode failed");
+        }
+        prefill_prefix_from_embeddings(cache, embeddings, token_count);
         return;
     }
     size_t image_tokens = 0;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "models/pi0_language_prefix.h"
+#include "models/pi0_vision_mtmd.h"
 #include "models/model.h"
 
 namespace vlacpp {
@@ -19,6 +20,7 @@ public:
     Pi0Vlm(const ModelConfig & config, const BackendConfig & backend, const TensorMap & tensors);
 
     bool has_vision_projector() const;
+    bool has_mtmd_vision_encoder() const;
     bool has_language_prefix() const;
     void project_vision_tokens(
         const std::vector<float> & vision_tokens,
@@ -38,6 +40,7 @@ private:
     const BackendConfig & backend_;
     const TensorMap & tensors_;
     Pi0LanguagePrefix language_prefix_;
+    Pi0VisionMtmd vision_mtmd_;
 };
 
 } // namespace vlacpp

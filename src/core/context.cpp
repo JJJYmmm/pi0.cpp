@@ -6,6 +6,7 @@
 #include "models/model.h"
 
 #include <cstdlib>
+#include <exception>
 #include <memory>
 #include <new>
 #include <string>
@@ -155,9 +156,13 @@ vlacpp_status vlacpp_infer_actions(
     }
 
     std::vector<float> actions;
-    status = context->model->impl->infer(context->cache, context->runtime, processed, actions);
-    if (status != VLACPP_STATUS_OK) {
-        return status;
+    try {
+        status = context->model->impl->infer(context->cache, context->runtime, processed, actions);
+        if (status != VLACPP_STATUS_OK) {
+            return status;
+        }
+    } catch (const std::exception & error) {
+        return vlacpp::fail(VLACPP_STATUS_RUNTIME_ERROR, error.what());
     }
 
     const size_t bytes = actions.size() * sizeof(float);

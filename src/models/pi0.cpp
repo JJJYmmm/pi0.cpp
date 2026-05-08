@@ -31,6 +31,9 @@ public:
             return "restricted-pi05-action-head";
         }
         if (action_decoder_.has_pi0_action_head()) {
+            if (vlm_.has_mtmd_vision_encoder() && vlm_.has_language_prefix()) {
+                return "restricted-pi0-mtmd-vlm-action-decoder";
+            }
             if (vlm_.has_vision_projector()) {
                 return "restricted-pi0-action-projector";
             }

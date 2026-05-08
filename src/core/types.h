@@ -11,6 +11,7 @@
 namespace vlacpp {
 
 struct ModelConfig {
+    std::string source_path;
     std::string model_type = "mock-pi0";
     int image_width = 224;
     int image_height = 224;

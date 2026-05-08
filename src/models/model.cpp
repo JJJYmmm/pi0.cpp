@@ -295,6 +295,7 @@ vlacpp_status load_model_from_path(
     if (status != VLACPP_STATUS_OK) {
         return status;
     }
+    config.source_path = path;
 
     if (config.model_type == "mock-pi0" || config.model_type == "pi0" || config.model_type == "pi05") {
         status = validate_pi0_tensors(config, tensors);
