@@ -24,7 +24,9 @@ includes GGUF conversion , a π0 CLI, and focused runtime tests.
 
 I may add more classic / representative VLA models, such as π0.5 and OpenVLA, in the future, _or maybe not_.
 
-![vlacpp v1 benchmark comparison](reports/vlacpp_v1_benchmark.svg)
+<p align="center">
+  <img src="reports/vlacpp_v1_benchmark.svg" width="650">
+</p>
 
 ## Layout
 
