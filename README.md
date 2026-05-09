@@ -1,12 +1,28 @@
-# vlacpp
+# vla.cpp
 
-`vlacpp` is a C++ VLA runtime for pi0-style GGUF inference. The v1 scope
-includes a C ABI, a Python ctypes wrapper, GGUF conversion from OpenPI/LeRobot
-checkpoints, a pi0 CLI, and focused runtime tests.
+> [!CAUTION]
+> This may not be the best timing to build a C++ runtime for VLA/WMA models.
+> The embodied AI space is moving extremely fast, with new models showing up
+> almost every day, so maintaining many model implementations in C++ is probably
+> not realistic.
+>
+> More importantly, from an edge-device perspective, this project is honestly
+> pretty **_useless_** for now. On GPU devices like Jetson Thor, the speedup over
+> `torch.compile` is not very obvious. On CPU, `vla.cpp` can be around 3x faster,
+> but it is still far from real-time. Also, common deployment tricks like
+> aggressive quantization are not always acceptable here, since they may hurt
+> action quality.
+>
+> So yeah, I am mostly writing `vla.cpp` for learning, for fun, and maybe for
+> some kind of future vision. Hopefully one day the VLA/WMA era will hit its
+> “ChatGPT moment”, CPUs / edge accelerators will become much stronger, and this
+> project will become actually useful. A small wish.
 
-On the current LIBERO v1 measurement, vlacpp CUDA is faster than uncompiled
-LeRobot CUDA and slower than `compile_model=True` LeRobot CUDA. See
-`reports/vlacpp_v1_performance.md` for versions and numbers.
+`vla.cpp` is a C++ VLA runtime for π0-style GGUF inference, built on top of
+`llama.cpp` / `ggml`. The v1 scope currently focuses on π0-style models and
+includes GGUF conversion , a π0 CLI, and focused runtime tests.
+
+I may add more classic / representative VLA models, such as π0.5 and OpenVLA, in the future, _or maybe not_.
 
 ![vlacpp v1 benchmark comparison](reports/vlacpp_v1_benchmark.svg)
 
