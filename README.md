@@ -71,7 +71,15 @@ wrapper can load the CUDA build with `library_path="build-cuda/libvlacpp.so"`.
 
 ## pi0 LIBERO GGUF Flow
 
-The runtime loads GGUF models. Set `MODEL_DIR` to a local pi0 LIBERO checkpoint
+The runtime loads GGUF models. A converted pi0 LIBERO GGUF is available at
+[`JJJYmmm/pi0-libero-vlacpp-gguf`](https://huggingface.co/JJJYmmm/pi0-libero-vlacpp-gguf):
+
+```sh
+huggingface-cli download JJJYmmm/pi0-libero-vlacpp-gguf \
+  --local-dir artifacts/pi0-libero-vlacpp-gguf
+```
+
+To convert from a local LeRobot/OpenPI checkpoint instead, set `MODEL_DIR` to a
 directory containing `model.safetensors` and `config.json`:
 
 ```sh
