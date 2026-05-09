@@ -60,6 +60,10 @@ typedef struct vlacpp_observation {
     const float * state;
     size_t state_count;
     const char * prompt;
+    const int32_t * prompt_tokens;
+    size_t prompt_token_count;
+    const float * noise;
+    size_t noise_count;
 } vlacpp_observation;
 
 typedef struct vlacpp_action_chunk {

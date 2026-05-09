@@ -51,6 +51,10 @@ class _Observation(ctypes.Structure):
         ("state", ctypes.POINTER(ctypes.c_float)),
         ("state_count", ctypes.c_size_t),
         ("prompt", ctypes.c_char_p),
+        ("prompt_tokens", ctypes.POINTER(ctypes.c_int32)),
+        ("prompt_token_count", ctypes.c_size_t),
+        ("noise", ctypes.POINTER(ctypes.c_float)),
+        ("noise_count", ctypes.c_size_t),
     ]
 
 
@@ -245,8 +249,16 @@ class Pi0Policy:
         state: Sequence[float] | np.ndarray,
         images: Mapping[str, np.ndarray] | None = None,
         prompt: str = "",
+        prompt_tokens: Sequence[int] | np.ndarray | None = None,
+        noise: Sequence[float] | np.ndarray | None = None,
     ) -> np.ndarray:
         state_array = np.ascontiguousarray(state, dtype=np.float32)
+        prompt_token_array = None
+        if prompt_tokens is not None:
+            prompt_token_array = np.ascontiguousarray(prompt_tokens, dtype=np.int32)
+        noise_array = None
+        if noise is not None:
+            noise_array = np.ascontiguousarray(noise, dtype=np.float32)
         image_items = list((images or {}).items())
         image_arrays: list[np.ndarray] = []
         image_names: list[bytes] = []
@@ -271,6 +283,12 @@ class Pi0Policy:
         observation.state = state_array.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
         observation.state_count = state_array.size
         observation.prompt = prompt.encode("utf-8")
+        if prompt_token_array is not None:
+            observation.prompt_tokens = prompt_token_array.ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
+            observation.prompt_token_count = prompt_token_array.size
+        if noise_array is not None:
+            observation.noise = noise_array.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+            observation.noise_count = noise_array.size
 
         chunk = _ActionChunk()
         self._check(self._lib.vlacpp_infer_actions(self._context, ctypes.byref(observation), ctypes.byref(chunk)))

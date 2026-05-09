@@ -16,6 +16,24 @@ float sample_u8_rgb(const vlacpp_image_view & image, int x, int y, int c) {
     return static_cast<float>(row[x * image.channels + channel]) / 255.0f * 2.0f - 1.0f;
 }
 
+float sample_bilinear_u8_rgb(const vlacpp_image_view & image, float x, float y, int c) {
+    x = std::max(0.0f, std::min(x, static_cast<float>(image.width - 1)));
+    y = std::max(0.0f, std::min(y, static_cast<float>(image.height - 1)));
+    const int x0 = static_cast<int>(std::floor(x));
+    const int y0 = static_cast<int>(std::floor(y));
+    const int x1 = std::min(x0 + 1, image.width - 1);
+    const int y1 = std::min(y0 + 1, image.height - 1);
+    const float wx = x - static_cast<float>(x0);
+    const float wy = y - static_cast<float>(y0);
+    const float top =
+        sample_u8_rgb(image, x0, y0, c) * (1.0f - wx) +
+        sample_u8_rgb(image, x1, y0, c) * wx;
+    const float bottom =
+        sample_u8_rgb(image, x0, y1, c) * (1.0f - wx) +
+        sample_u8_rgb(image, x1, y1, c) * wx;
+    return top * (1.0f - wy) + bottom * wy;
+}
+
 } // namespace
 
 vlacpp_status validate_and_preprocess(
@@ -52,6 +70,22 @@ vlacpp_status validate_and_preprocess(
     if (raw.prompt != nullptr) {
         out.prompt = raw.prompt;
     }
+    if (raw.prompt_tokens != nullptr && raw.prompt_token_count > 0) {
+        out.prompt_tokens.assign(raw.prompt_tokens, raw.prompt_tokens + raw.prompt_token_count);
+        for (int32_t token : out.prompt_tokens) {
+            if (token < 0) {
+                return fail(VLACPP_STATUS_INVALID_ARGUMENT, "prompt token id must be non-negative");
+            }
+        }
+    }
+    if (raw.noise != nullptr && raw.noise_count > 0) {
+        const size_t expected_noise =
+            static_cast<size_t>(config.action_horizon) * static_cast<size_t>(config.action_dim);
+        if (raw.noise_count != expected_noise) {
+            return fail(VLACPP_STATUS_INVALID_ARGUMENT, "observation noise dimension mismatch");
+        }
+        out.noise.assign(raw.noise, raw.noise + raw.noise_count);
+    }
 
     std::set<std::string> required(config.image_keys.begin(), config.image_keys.end());
     for (size_t i = 0; i < raw.image_count; ++i) {
@@ -75,15 +109,28 @@ vlacpp_status validate_and_preprocess(
         tensor.channels = 3;
         tensor.data.resize(static_cast<size_t>(tensor.width) * tensor.height * tensor.channels);
 
-        for (int y = 0; y < tensor.height; ++y) {
-            const int src_y = std::min(image.height - 1, static_cast<int>(
-                std::floor((static_cast<float>(y) + 0.5f) * image.height / tensor.height)));
-            for (int x = 0; x < tensor.width; ++x) {
-                const int src_x = std::min(image.width - 1, static_cast<int>(
-                    std::floor((static_cast<float>(x) + 0.5f) * image.width / tensor.width)));
+        const float ratio = std::max(
+            static_cast<float>(image.width) / static_cast<float>(tensor.width),
+            static_cast<float>(image.height) / static_cast<float>(tensor.height));
+        const int resized_width = std::max(1, static_cast<int>(static_cast<float>(image.width) / ratio));
+        const int resized_height = std::max(1, static_cast<int>(static_cast<float>(image.height) / ratio));
+        const int pad_x0 = (tensor.width - resized_width) / 2;
+        const int pad_y0 = (tensor.height - resized_height) / 2;
+
+        std::fill(tensor.data.begin(), tensor.data.end(), -1.0f);
+        for (int y = pad_y0; y < pad_y0 + resized_height; ++y) {
+            const float resized_y = static_cast<float>(y - pad_y0);
+            const float src_y = (resized_y + 0.5f) * static_cast<float>(image.height) /
+                                    static_cast<float>(resized_height) -
+                                0.5f;
+            for (int x = pad_x0; x < pad_x0 + resized_width; ++x) {
+                const float resized_x = static_cast<float>(x - pad_x0);
+                const float src_x = (resized_x + 0.5f) * static_cast<float>(image.width) /
+                                        static_cast<float>(resized_width) -
+                                    0.5f;
                 for (int c = 0; c < 3; ++c) {
                     tensor.data[(static_cast<size_t>(y) * tensor.width + x) * 3 + c] =
-                        sample_u8_rgb(image, src_x, src_y, c);
+                        sample_bilinear_u8_rgb(image, src_x, src_y, c);
                 }
             }
         }

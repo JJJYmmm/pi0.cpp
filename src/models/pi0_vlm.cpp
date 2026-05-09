@@ -6,7 +6,9 @@
 #include "ggml.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
+#include <cmath>
 #include <numeric>
 #include <stdexcept>
 
@@ -27,6 +29,7 @@ Pi0Vlm::Pi0Vlm(const ModelConfig & config, const BackendConfig & backend, const 
       backend_(backend),
       tensors_(tensors),
       language_prefix_(config, backend, tensors),
+      tokenizer_(config.source_path),
       vision_mtmd_(config, backend) {}
 
 bool Pi0Vlm::has_vision_projector() const {
@@ -44,6 +47,15 @@ bool Pi0Vlm::has_language_prefix() const {
         config_.openpi_language_q_out > 0 &&
         config_.openpi_language_kv_out > 0 &&
         language_prefix_.has_layer(0);
+}
+
+bool Pi0Vlm::has_text_embeddings() const {
+    const Tensor * embeddings = find_tensor("model.paligemma_with_expert.paligemma.lm_head.weight");
+    return embeddings != nullptr &&
+        embeddings->shape.size() == 2 &&
+        embeddings->shape[0] == config_.openpi_language_width &&
+        embeddings->shape[1] > 0 &&
+        embeddings->data.size() == static_cast<size_t>(embeddings->shape[0] * embeddings->shape[1]);
 }
 
 void Pi0Vlm::project_vision_tokens(
@@ -98,6 +110,54 @@ void Pi0Vlm::project_vision_tokens(
     ggml_free(ctx);
 }
 
+void Pi0Vlm::embed_prompt(
+    const std::string & prompt,
+    std::vector<float> & out,
+    int & token_count) const {
+    out.clear();
+    token_count = 0;
+    const Tensor * embeddings = find_tensor("model.paligemma_with_expert.paligemma.lm_head.weight");
+    if (prompt.empty() || embeddings == nullptr || !has_text_embeddings()) {
+        return;
+    }
+    std::vector<int32_t> tokens;
+    if (tokenizer_.tokenize_prompt(prompt, config_.max_token_len, tokens)) {
+        embed_prompt_tokens(tokens, out, token_count);
+        return;
+    }
+    throw std::runtime_error("pi0 prompt text requires a llama.cpp tokenizer sidecar or explicit prompt token ids");
+}
+
+void Pi0Vlm::embed_prompt_tokens(
+    const std::vector<int32_t> & tokens,
+    std::vector<float> & out,
+    int & token_count) const {
+    out.clear();
+    token_count = 0;
+    const Tensor * embeddings = find_tensor("model.paligemma_with_expert.paligemma.lm_head.weight");
+    if (tokens.empty() || embeddings == nullptr || !has_text_embeddings()) {
+        return;
+    }
+    const int width = config_.openpi_language_width;
+    const float scale = std::sqrt(static_cast<float>(width));
+    const int64_t vocab = embeddings->shape[1];
+    const size_t count = std::min(tokens.size(), static_cast<size_t>(config_.max_token_len));
+    out.reserve(count * static_cast<size_t>(width));
+    for (size_t i = 0; i < count; ++i) {
+        const int64_t token = tokens[i];
+        if (token < 0 || token >= vocab) {
+            throw std::invalid_argument("pi0 prompt token id is outside the embedding vocabulary");
+        }
+        const size_t offset = static_cast<size_t>(token) * static_cast<size_t>(width);
+        const auto begin = embeddings->data.begin() + static_cast<std::ptrdiff_t>(offset);
+        const auto end = begin + static_cast<std::ptrdiff_t>(width);
+        for (auto it = begin; it != end; ++it) {
+            out.push_back(*it * scale);
+        }
+    }
+    token_count = static_cast<int>(count);
+}
+
 void Pi0Vlm::prefill_prefix_from_embeddings(
     KvCache & cache,
     const std::vector<float> & embeddings,
@@ -133,7 +193,14 @@ void Pi0Vlm::prefill_prefix_from_embeddings(
         kv_heads,
         head_dim,
         cache.prefix_layers,
-        hidden);
+        hidden,
+        cache.prefix_generation,
+        false);
+    for (PrefixLayerKv & layer : cache.prefix_layers) {
+        if (!layer.device_cached) {
+            layer.generation = cache.prefix_generation;
+        }
+    }
     cache.token_count = static_cast<size_t>(token_count);
     cache.prefix_valid = true;
 }
@@ -147,6 +214,17 @@ void Pi0Vlm::prefill_prefix(KvCache & cache, const ObservationData & observation
         int token_count = 0;
         if (!vision_mtmd_.encode(observation.images, backend_.n_threads, embeddings, token_count)) {
             throw std::runtime_error("mtmd pi0 vision encode failed");
+        }
+        std::vector<float> prompt_embeddings;
+        int prompt_tokens = 0;
+        if (!observation.prompt_tokens.empty()) {
+            embed_prompt_tokens(observation.prompt_tokens, prompt_embeddings, prompt_tokens);
+        } else {
+            embed_prompt(observation.prompt, prompt_embeddings, prompt_tokens);
+        }
+        if (prompt_tokens > 0) {
+            embeddings.insert(embeddings.end(), prompt_embeddings.begin(), prompt_embeddings.end());
+            token_count += prompt_tokens;
         }
         prefill_prefix_from_embeddings(cache, embeddings, token_count);
         return;

@@ -132,7 +132,7 @@ int main(int argc, char ** argv) {
     view.stride_bytes = 224 * 3;
 
     std::vector<float> state = parse_state(state_text);
-    vlacpp_observation obs;
+    vlacpp_observation obs{};
     obs.images = &view;
     obs.image_count = 1;
     obs.state = state.empty() ? nullptr : state.data();

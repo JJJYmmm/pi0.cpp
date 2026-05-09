@@ -1,6 +1,7 @@
 #pragma once
 
 #include "models/pi0_language_prefix.h"
+#include "models/pi0_tokenizer.h"
 #include "models/pi0_vision_mtmd.h"
 #include "models/model.h"
 
@@ -22,10 +23,19 @@ public:
     bool has_vision_projector() const;
     bool has_mtmd_vision_encoder() const;
     bool has_language_prefix() const;
+    bool has_text_embeddings() const;
     void project_vision_tokens(
         const std::vector<float> & vision_tokens,
         int token_count,
         std::vector<float> & out) const;
+    void embed_prompt(
+        const std::string & prompt,
+        std::vector<float> & out,
+        int & token_count) const;
+    void embed_prompt_tokens(
+        const std::vector<int32_t> & tokens,
+        std::vector<float> & out,
+        int & token_count) const;
     void prefill_prefix_from_embeddings(
         KvCache & cache,
         const std::vector<float> & embeddings,
@@ -40,6 +50,7 @@ private:
     const BackendConfig & backend_;
     const TensorMap & tensors_;
     Pi0LanguagePrefix language_prefix_;
+    Pi0Tokenizer tokenizer_;
     Pi0VisionMtmd vision_mtmd_;
 };
 

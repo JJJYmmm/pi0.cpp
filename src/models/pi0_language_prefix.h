@@ -17,9 +17,32 @@ public:
         int kv_heads,
         int head_dim,
         std::vector<PrefixLayerKv> & cache,
-        std::vector<float> & out) const;
+        std::vector<float> & out,
+        uint64_t generation = 0,
+        bool need_output = true) const;
 
 private:
+    bool prefill_layers_batch(
+        const std::vector<float> & tokens,
+        const std::vector<int> & positions,
+        int batch,
+        int heads,
+        int kv_heads,
+        int head_dim,
+        std::vector<PrefixLayerKv> & cache,
+        std::vector<float> & out,
+        uint64_t generation,
+        bool need_output) const;
+    bool prefill_layer_batch(
+        int layer,
+        const std::vector<float> & tokens,
+        const std::vector<int> & positions,
+        int batch,
+        int heads,
+        int kv_heads,
+        int head_dim,
+        PrefixLayerKv & layer_cache,
+        std::vector<float> & out) const;
     void norm_batch(
         int layer,
         const char * weight_name,

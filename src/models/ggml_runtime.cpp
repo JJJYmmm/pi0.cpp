@@ -11,8 +11,10 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <new>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace vlacpp {
 namespace {
@@ -35,6 +37,51 @@ struct BackendState {
     }
 };
 
+struct AlignedBuffer {
+    void * data = nullptr;
+    size_t size = 0;
+
+    ~AlignedBuffer() {
+        std::free(data);
+    }
+
+    void ensure(size_t requested_size) {
+        const size_t padded_size = GGML_PAD(requested_size, GGML_MEM_ALIGN);
+        if (data != nullptr && size >= padded_size) {
+            return;
+        }
+        std::free(data);
+        data = nullptr;
+        size = 0;
+        void * buffer = nullptr;
+        if (posix_memalign(&buffer, GGML_MEM_ALIGN, padded_size) != 0) {
+            throw std::bad_alloc();
+        }
+        data = buffer;
+        size = padded_size;
+    }
+};
+
+struct StableBufferKey {
+    const void * backend = nullptr;
+    const void * id = nullptr;
+    uint64_t variant = 0;
+    size_t size = 0;
+
+    bool operator<(const StableBufferKey & other) const {
+        if (backend != other.backend) {
+            return backend < other.backend;
+        }
+        if (id != other.id) {
+            return id < other.id;
+        }
+        if (variant != other.variant) {
+            return variant < other.variant;
+        }
+        return size < other.size;
+    }
+};
+
 struct CachedWeight {
     ggml_context * ctx = nullptr;
     ggml_backend_buffer_t buffer = nullptr;
@@ -51,14 +98,27 @@ struct CachedWeight {
 };
 
 struct WeightKey {
-    const Tensor * tensor = nullptr;
+    const void * backend = nullptr;
+    const void * tensor = nullptr;
+    uint64_t generation = 0;
+    ggml_type type = GGML_TYPE_F32;
     int n_dims = 0;
     int64_t ne0 = 0;
     int64_t ne1 = 0;
+    int64_t ne2 = 0;
 
     bool operator<(const WeightKey & other) const {
+        if (backend != other.backend) {
+            return backend < other.backend;
+        }
         if (tensor != other.tensor) {
             return tensor < other.tensor;
+        }
+        if (generation != other.generation) {
+            return generation < other.generation;
+        }
+        if (type != other.type) {
+            return type < other.type;
         }
         if (n_dims != other.n_dims) {
             return n_dims < other.n_dims;
@@ -66,12 +126,17 @@ struct WeightKey {
         if (ne0 != other.ne0) {
             return ne0 < other.ne0;
         }
-        return ne1 < other.ne1;
+        if (ne1 != other.ne1) {
+            return ne1 < other.ne1;
+        }
+        return ne2 < other.ne2;
     }
 };
 
 thread_local std::unique_ptr<BackendState> cuda_state;
+thread_local std::unique_ptr<BackendState> cpu_state;
 thread_local std::map<WeightKey, std::unique_ptr<CachedWeight>> cuda_weight_cache;
+thread_local std::map<StableBufferKey, AlignedBuffer> cuda_stable_compute_buffers;
 
 struct ProfileStats {
     int64_t calls = 0;
@@ -148,8 +213,17 @@ void record_profile(const char * label, const ProfileStats & delta) {
     stats.download_bytes += delta.download_bytes;
 }
 
-ggml_tensor * cache_weight(ggml_backend_t backend, const Tensor & source, int n_dims, int64_t ne0, int64_t ne1) {
-    WeightKey key{&source, n_dims, ne0, ne1};
+ggml_tensor * cache_f32_tensor(
+    ggml_backend_t backend,
+    const void * key_ptr,
+    uint64_t generation,
+    const float * data,
+    size_t element_count,
+    int n_dims,
+    int64_t ne0,
+    int64_t ne1,
+    int64_t ne2) {
+    WeightKey key{backend, key_ptr, generation, GGML_TYPE_F32, n_dims, ne0, ne1, ne2};
     auto it = cuda_weight_cache.find(key);
     if (it != cuda_weight_cache.end()) {
         return it->second->tensor;
@@ -166,8 +240,10 @@ ggml_tensor * cache_weight(ggml_backend_t backend, const Tensor & source, int n_
     }
     if (n_dims == 1) {
         cached->tensor = ggml_new_tensor_1d(cached->ctx, GGML_TYPE_F32, ne0);
-    } else {
+    } else if (n_dims == 2) {
         cached->tensor = ggml_new_tensor_2d(cached->ctx, GGML_TYPE_F32, ne0, ne1);
+    } else {
+        cached->tensor = ggml_new_tensor_3d(cached->ctx, GGML_TYPE_F32, ne0, ne1, ne2);
     }
     if (cached->tensor == nullptr) {
         throw std::runtime_error("failed to allocate ggml weight tensor metadata");
@@ -177,10 +253,105 @@ ggml_tensor * cache_weight(ggml_backend_t backend, const Tensor & source, int n_
         throw std::runtime_error("failed to allocate ggml backend weight buffer");
     }
     ggml_backend_buffer_set_usage(cached->buffer, GGML_BACKEND_BUFFER_USAGE_WEIGHTS);
-    ggml_backend_tensor_set(cached->tensor, source.data.data(), 0, source.data.size() * sizeof(float));
+    ggml_backend_tensor_set(cached->tensor, data, 0, element_count * sizeof(float));
     ggml_tensor * result = cached->tensor;
     cuda_weight_cache.emplace(key, std::move(cached));
     return result;
+}
+
+ggml_tensor * cache_f16_tensor(
+    ggml_backend_t backend,
+    const void * key_ptr,
+    const float * data,
+    size_t element_count,
+    int64_t ne0,
+    int64_t ne1) {
+    WeightKey key{backend, key_ptr, 0, GGML_TYPE_F16, 2, ne0, ne1, 1};
+    auto it = cuda_weight_cache.find(key);
+    if (it != cuda_weight_cache.end()) {
+        return it->second->tensor;
+    }
+
+    auto cached = std::make_unique<CachedWeight>();
+    ggml_init_params params{};
+    params.mem_size = 2 * ggml_tensor_overhead();
+    params.mem_buffer = nullptr;
+    params.no_alloc = true;
+    cached->ctx = ggml_init(params);
+    if (cached->ctx == nullptr) {
+        throw std::runtime_error("failed to initialize ggml weight context");
+    }
+    cached->tensor = ggml_new_tensor_2d(cached->ctx, GGML_TYPE_F16, ne0, ne1);
+    if (cached->tensor == nullptr) {
+        throw std::runtime_error("failed to allocate ggml weight tensor metadata");
+    }
+    cached->buffer = ggml_backend_alloc_ctx_tensors(cached->ctx, backend);
+    if (cached->buffer == nullptr) {
+        throw std::runtime_error("failed to allocate ggml backend weight buffer");
+    }
+    std::vector<ggml_fp16_t> f16(element_count);
+    ggml_fp32_to_fp16_row(data, f16.data(), static_cast<int64_t>(element_count));
+    ggml_backend_buffer_set_usage(cached->buffer, GGML_BACKEND_BUFFER_USAGE_WEIGHTS);
+    ggml_backend_tensor_set(cached->tensor, f16.data(), 0, f16.size() * sizeof(ggml_fp16_t));
+    ggml_tensor * result = cached->tensor;
+    cuda_weight_cache.emplace(key, std::move(cached));
+    return result;
+}
+
+ggml_tensor * cache_empty_f32_tensor(
+    ggml_backend_t backend,
+    const void * key_ptr,
+    uint64_t generation,
+    int n_dims,
+    int64_t ne0,
+    int64_t ne1,
+    int64_t ne2) {
+    WeightKey key{backend, key_ptr, generation, GGML_TYPE_F32, n_dims, ne0, ne1, ne2};
+    auto it = cuda_weight_cache.find(key);
+    if (it != cuda_weight_cache.end()) {
+        return it->second->tensor;
+    }
+
+    auto cached = std::make_unique<CachedWeight>();
+    ggml_init_params params{};
+    params.mem_size = 2 * ggml_tensor_overhead();
+    params.mem_buffer = nullptr;
+    params.no_alloc = true;
+    cached->ctx = ggml_init(params);
+    if (cached->ctx == nullptr) {
+        throw std::runtime_error("failed to initialize ggml cached tensor context");
+    }
+    if (n_dims == 3) {
+        cached->tensor = ggml_new_tensor_3d(cached->ctx, GGML_TYPE_F32, ne0, ne1, ne2);
+    } else if (n_dims == 2) {
+        cached->tensor = ggml_new_tensor_2d(cached->ctx, GGML_TYPE_F32, ne0, ne1);
+    } else {
+        cached->tensor = ggml_new_tensor_1d(cached->ctx, GGML_TYPE_F32, ne0);
+    }
+    if (cached->tensor == nullptr) {
+        throw std::runtime_error("failed to allocate ggml cached tensor metadata");
+    }
+    cached->buffer = ggml_backend_alloc_ctx_tensors(cached->ctx, backend);
+    if (cached->buffer == nullptr) {
+        throw std::runtime_error("failed to allocate ggml cached backend buffer");
+    }
+    ggml_backend_buffer_set_usage(cached->buffer, GGML_BACKEND_BUFFER_USAGE_WEIGHTS);
+    ggml_tensor * result = cached->tensor;
+    cuda_weight_cache.emplace(key, std::move(cached));
+    return result;
+}
+
+ggml_tensor * cache_weight(
+    ggml_backend_t backend,
+    const Tensor & source,
+    int n_dims,
+    int64_t ne0,
+    int64_t ne1,
+    bool use_f16_2d) {
+    if (n_dims == 2 && use_f16_2d) {
+        return cache_f16_tensor(backend, &source, source.data.data(), source.data.size(), ne0, ne1);
+    }
+    return cache_f32_tensor(backend, &source, 0, source.data.data(), source.data.size(), n_dims, ne0, ne1, 1);
 }
 
 void set_cpu_threads(ggml_backend_t backend, int n_threads) {
@@ -217,18 +388,40 @@ BackendState & get_cuda_state(int n_threads) {
     return *cuda_state;
 }
 
+BackendState & get_cpu_state(int n_threads) {
+    if (!cpu_state) {
+        cpu_state = std::make_unique<BackendState>();
+        cpu_state->cpu = ggml_backend_init_by_type(GGML_BACKEND_DEVICE_TYPE_CPU, nullptr);
+        if (cpu_state->cpu == nullptr) {
+            cpu_state.reset();
+            throw std::runtime_error("failed to initialize ggml CPU backend");
+        }
+        ggml_backend_t backends[] = {cpu_state->cpu};
+        cpu_state->sched = ggml_backend_sched_new(backends, nullptr, 1, GGML_DEFAULT_GRAPH_SIZE, false, true);
+        if (cpu_state->sched == nullptr) {
+            cpu_state.reset();
+            throw std::runtime_error("failed to initialize ggml CPU backend scheduler");
+        }
+    }
+    set_cpu_threads(cpu_state->cpu, n_threads);
+    return *cpu_state;
+}
+
 } // namespace
 
 GgmlRunner::GgmlRunner(const BackendConfig & backend)
     : backend_config_(backend) {
-    if (backend_config_.backend != VLACPP_BACKEND_CUDA) {
-        return;
+    if (backend_config_.backend == VLACPP_BACKEND_CUDA) {
+        BackendState & state = get_cuda_state(backend_config_.n_threads);
+        gpu_backend_ = state.gpu;
+        cpu_backend_ = state.cpu;
+        sched_ = state.sched;
+    } else {
+        BackendState & state = get_cpu_state(backend_config_.n_threads);
+        gpu_backend_ = state.cpu;
+        cpu_backend_ = state.cpu;
+        sched_ = state.sched;
     }
-
-    BackendState & state = get_cuda_state(backend_config_.n_threads);
-    gpu_backend_ = state.gpu;
-    cpu_backend_ = state.cpu;
-    sched_ = state.sched;
 }
 
 GgmlRunner::~GgmlRunner() = default;
@@ -237,30 +430,104 @@ bool GgmlRunner::uses_backend() const {
     return sched_ != nullptr;
 }
 
-ggml_init_params GgmlRunner::init_params(size_t mem_size) const {
+ggml_init_params GgmlRunner::init_params(size_t mem_size, const void * stable_id, uint64_t stable_variant) const {
     ggml_init_params params{};
     params.mem_size = mem_size;
     params.mem_buffer = nullptr;
     params.no_alloc = uses_backend();
+    stable_id_ = stable_id;
+    stable_variant_ = stable_variant;
+    if (uses_backend() && stable_id != nullptr) {
+        StableBufferKey key{gpu_backend_, stable_id, stable_variant, GGML_PAD(mem_size, GGML_MEM_ALIGN)};
+        AlignedBuffer & buffer = cuda_stable_compute_buffers[key];
+        buffer.ensure(mem_size);
+        params.mem_size = buffer.size;
+        params.mem_buffer = buffer.data;
+    }
     return params;
 }
 
 ggml_tensor * GgmlRunner::new_weight_1d(ggml_context * ctx, const Tensor & tensor) const {
     if (uses_backend()) {
-        return cache_weight(gpu_backend_, tensor, 1, tensor.shape[0], 1);
+        return cache_weight(gpu_backend_, tensor, 1, tensor.shape[0], 1, false);
     }
     ggml_tensor * weight = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, tensor.shape[0]);
     std::memcpy(ggml_get_data_f32(weight), tensor.data.data(), tensor.data.size() * sizeof(float));
     return weight;
 }
 
+ggml_tensor * GgmlRunner::new_weight_1d_plus_one(ggml_context * ctx, const Tensor & tensor) const {
+    std::vector<float> scaled(tensor.data.size());
+    for (size_t i = 0; i < tensor.data.size(); ++i) {
+        scaled[i] = 1.0f + tensor.data[i];
+    }
+    if (uses_backend()) {
+        return cache_f32_tensor(gpu_backend_, &tensor, 1, scaled.data(), scaled.size(), 1, tensor.shape[0], 1, 1);
+    }
+    ggml_tensor * weight = ggml_new_tensor_1d(ctx, GGML_TYPE_F32, tensor.shape[0]);
+    std::memcpy(ggml_get_data_f32(weight), scaled.data(), scaled.size() * sizeof(float));
+    return weight;
+}
+
 ggml_tensor * GgmlRunner::new_weight_2d(ggml_context * ctx, const Tensor & tensor) const {
     if (uses_backend()) {
-        return cache_weight(gpu_backend_, tensor, 2, tensor.shape[0], tensor.shape[1]);
+        return cache_weight(
+            gpu_backend_,
+            tensor,
+            2,
+            tensor.shape[0],
+            tensor.shape[1],
+            backend_config_.backend == VLACPP_BACKEND_CUDA);
     }
     ggml_tensor * weight = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, tensor.shape[0], tensor.shape[1]);
     std::memcpy(ggml_get_data_f32(weight), tensor.data.data(), tensor.data.size() * sizeof(float));
     return weight;
+}
+
+ggml_tensor * GgmlRunner::new_cached_f32_3d(
+    ggml_context * ctx,
+    const void * key,
+    uint64_t generation,
+    const float * data,
+    int64_t ne0,
+    int64_t ne1,
+    int64_t ne2) const {
+    const size_t element_count = static_cast<size_t>(ne0) * static_cast<size_t>(ne1) * static_cast<size_t>(ne2);
+    if (uses_backend()) {
+        if (data == nullptr) {
+            return cache_empty_f32_tensor(gpu_backend_, key, generation, 3, ne0, ne1, ne2);
+        }
+        return cache_f32_tensor(gpu_backend_, key, generation, data, element_count, 3, ne0, ne1, ne2);
+    }
+    if (data == nullptr) {
+        throw std::invalid_argument("CPU cached tensor requires host data");
+    }
+    ggml_tensor * tensor = ggml_new_tensor_3d(ctx, GGML_TYPE_F32, ne0, ne1, ne2);
+    std::memcpy(ggml_get_data_f32(tensor), data, element_count * sizeof(float));
+    return tensor;
+}
+
+ggml_tensor * GgmlRunner::new_cached_f32_3d_from_backend(
+    ggml_context * ctx,
+    const void * key,
+    uint64_t generation,
+    const ggml_tensor * source,
+    int64_t ne0,
+    int64_t ne1,
+    int64_t ne2) const {
+    if (!uses_backend()) {
+        (void) ctx;
+        (void) key;
+        (void) generation;
+        (void) source;
+        (void) ne0;
+        (void) ne1;
+        (void) ne2;
+        throw std::invalid_argument("backend cached tensor copy requires a backend");
+    }
+    ggml_tensor * cached = cache_empty_f32_tensor(gpu_backend_, key, generation, 3, ne0, ne1, ne2);
+    ggml_backend_tensor_copy(source, cached);
+    return cached;
 }
 
 void GgmlRunner::set_input(

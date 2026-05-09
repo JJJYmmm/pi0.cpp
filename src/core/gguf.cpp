@@ -14,8 +14,12 @@ constexpr uint32_t kGgufVersion = 3;
 constexpr uint32_t kGgufTypeUint32 = 4;
 constexpr uint32_t kGgufTypeInt32 = 5;
 constexpr uint32_t kGgufTypeFloat32 = 6;
+constexpr uint32_t kGgufTypeBool = 7;
 constexpr uint32_t kGgufTypeString = 8;
 constexpr uint32_t kGgufTypeArray = 9;
+constexpr uint32_t kGgufTypeUint64 = 10;
+constexpr uint32_t kGgufTypeInt64 = 11;
+constexpr uint32_t kGgufTypeFloat64 = 12;
 constexpr uint32_t kGgmlTypeF32 = 0;
 constexpr uint64_t kTensorAlignment = 32;
 
@@ -90,10 +94,30 @@ bool read_string_array(Reader & reader, std::vector<std::string> & out) {
 
 bool skip_value(Reader & reader, uint32_t type) {
     switch (type) {
+        case 0:
+        case 1: {
+            uint8_t ignored = 0;
+            return reader.read_scalar(ignored);
+        }
+        case 2:
+        case 3: {
+            uint16_t ignored = 0;
+            return reader.read_scalar(ignored);
+        }
         case kGgufTypeUint32:
         case kGgufTypeInt32:
         case kGgufTypeFloat32: {
             uint32_t ignored = 0;
+            return reader.read_scalar(ignored);
+        }
+        case kGgufTypeBool: {
+            bool ignored = false;
+            return reader.read_scalar(ignored);
+        }
+        case kGgufTypeUint64:
+        case kGgufTypeInt64:
+        case kGgufTypeFloat64: {
+            uint64_t ignored = 0;
             return reader.read_scalar(ignored);
         }
         case kGgufTypeString: {

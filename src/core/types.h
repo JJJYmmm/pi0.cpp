@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -62,21 +63,29 @@ struct ObservationData {
     std::vector<ImageTensor> images;
     std::vector<float> state;
     std::string prompt;
+    std::vector<int32_t> prompt_tokens;
+    std::vector<float> noise;
 };
 
 struct PrefixLayerKv {
     std::vector<float> k;
     std::vector<float> v;
+    uint64_t generation = 0;
+    size_t k_size = 0;
+    size_t v_size = 0;
+    bool device_cached = false;
 };
 
 struct KvCache {
     bool prefix_valid = false;
     size_t token_count = 0;
+    uint64_t prefix_generation = 0;
     std::vector<PrefixLayerKv> prefix_layers;
 
     void reset() {
         prefix_valid = false;
         token_count = 0;
+        ++prefix_generation;
         prefix_layers.clear();
     }
 };
@@ -89,6 +98,7 @@ struct BackendConfig {
 struct RuntimeConfig {
     uint32_t seed = 0;
     int flow_steps = 10;
+    std::mt19937 rng;
 };
 
 class Model {
@@ -99,7 +109,7 @@ public:
     virtual vlacpp_status reset_cache(KvCache & cache) = 0;
     virtual vlacpp_status infer(
         KvCache & cache,
-        const RuntimeConfig & runtime,
+        RuntimeConfig & runtime,
         const ObservationData & observation,
         std::vector<float> & out_actions) = 0;
 };

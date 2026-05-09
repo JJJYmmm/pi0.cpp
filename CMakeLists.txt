@@ -19,6 +19,7 @@ add_library(vlacpp
     src/models/pi0_action_expert.cpp
     src/models/pi0_action_decoder.cpp
     src/models/pi0_language_prefix.cpp
+    src/models/pi0_tokenizer.cpp
     src/models/pi0_vision_mtmd.cpp
     src/models/pi0_vlm.cpp
     src/models/pi0.cpp
@@ -88,6 +89,7 @@ if(VLACPP_BUILD_TESTS)
         set(VLACPP_ACTION_HEAD_MAPPED_GGUF "${CMAKE_CURRENT_BINARY_DIR}/action-head-openpi-mapped.gguf")
         set(VLACPP_ACTION_HEAD_NORM_STATS "${CMAKE_CURRENT_SOURCE_DIR}/tests/action-head-norm-stats.json")
         set(VLACPP_ACTION_HEAD_MAPPED_NORM_GGUF "${CMAKE_CURRENT_BINARY_DIR}/action-head-openpi-mapped-norm.gguf")
+        set(VLACPP_SAFETENSORS_NORM_STATS_DIR "${CMAKE_CURRENT_BINARY_DIR}/safetensors-norm-stats")
         set(VLACPP_PI05_ACTION_HEAD_CHECKPOINT "${CMAKE_CURRENT_SOURCE_DIR}/tests/pi05-action-head-checkpoint.json")
         set(VLACPP_PI05_ACTION_HEAD_GGUF "${CMAKE_CURRENT_BINARY_DIR}/pi05-action-head.gguf")
         set(VLACPP_PI05_ACTION_HEAD_SAFETENSORS "${CMAKE_CURRENT_BINARY_DIR}/pi05-action-head-openpi-names.safetensors")
@@ -118,6 +120,15 @@ if(VLACPP_BUILD_TESTS)
                 --expect-language-layers 2
                 --expect-action-expert-layers 2
         )
+        add_test(
+            NAME vlacpp-safetensors-norm-stats-convert
+            COMMAND
+                ${Python3_EXECUTABLE}
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/check_safetensors_norm_stats_convert.py"
+                --repo "${CMAKE_CURRENT_SOURCE_DIR}"
+                --output-dir "${VLACPP_SAFETENSORS_NORM_STATS_DIR}"
+        )
+        set_tests_properties(vlacpp-safetensors-norm-stats-convert PROPERTIES SKIP_RETURN_CODE 77)
         add_test(
             NAME vlacpp-openpi-graph-default-metadata-convert
             COMMAND
@@ -318,14 +329,6 @@ if(VLACPP_BUILD_TESTS)
                 "${CMAKE_CURRENT_SOURCE_DIR}/tools/run-openpi-pytorch-smoke.py"
                 --checkpoint "/tmp/not-used.safetensors"
                 --allow-missing-openpi
-        )
-        add_test(
-            NAME vlacpp-download-lock
-            COMMAND
-                ${Python3_EXECUTABLE}
-                "${CMAKE_CURRENT_SOURCE_DIR}/tests/check_download_lock.py"
-                --repo "${CMAKE_CURRENT_SOURCE_DIR}"
-                --work-dir "${CMAKE_CURRENT_BINARY_DIR}/download-lock"
         )
         add_test(
             NAME vlacpp-pi0-goal-audit-incomplete

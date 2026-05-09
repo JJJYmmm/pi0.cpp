@@ -13,6 +13,7 @@ from typing import Any
 GGUF_TYPE_UINT32 = 4
 GGUF_TYPE_INT32 = 5
 GGUF_TYPE_FLOAT32 = 6
+GGUF_TYPE_BOOL = 7
 GGUF_TYPE_STRING = 8
 GGUF_TYPE_ARRAY = 9
 
@@ -29,6 +30,8 @@ def read_value(data: bytes, offset: int, value_type: int) -> tuple[Any, int]:
         if value_type == GGUF_TYPE_FLOAT32:
             return struct.unpack_from("<f", data, offset)[0], offset + 4
         return struct.unpack_from("<i", data, offset)[0], offset + 4
+    if value_type == GGUF_TYPE_BOOL:
+        return bool(struct.unpack_from("<?", data, offset)[0]), offset + 1
     if value_type == GGUF_TYPE_STRING:
         return read_string(data, offset)
     if value_type == GGUF_TYPE_ARRAY:

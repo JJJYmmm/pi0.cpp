@@ -89,6 +89,10 @@ int main() {
 
     vlacpp_free_action_chunk(&actions);
     require_status(vlacpp_reset_cache(context), "reset cache");
+    int32_t invalid_prompt_token = -1;
+    obs.prompt_tokens = &invalid_prompt_token;
+    obs.prompt_token_count = 1;
+    require_not_status(vlacpp_infer_actions(context, &obs, &actions), "infer with negative prompt token");
     vlacpp_free_context(context);
     vlacpp_free_model(model);
     std::remove(path);

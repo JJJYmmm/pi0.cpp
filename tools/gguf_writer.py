@@ -17,9 +17,24 @@ sys.path.insert(0, str(LLAMA_GGUF_PY))
 import gguf  # noqa: E402
 
 
+TOKENIZER_KEYS = {
+    "tokenizer.ggml.model",
+    "tokenizer.ggml.tokens",
+    "tokenizer.ggml.scores",
+    "tokenizer.ggml.token_type",
+    "tokenizer.ggml.bos_token_id",
+    "tokenizer.ggml.eos_token_id",
+    "tokenizer.ggml.unknown_token_id",
+    "tokenizer.ggml.padding_token_id",
+    "tokenizer.ggml.add_bos_token",
+    "tokenizer.ggml.add_eos_token",
+    "tokenizer.ggml.add_space_prefix",
+}
+
+
 def add_metadata(writer: gguf.GGUFWriter, metadata: dict[str, Any]) -> None:
     for key, value in metadata.items():
-        if key == "general.architecture":
+        if key == "general.architecture" or key in TOKENIZER_KEYS:
             continue
         if isinstance(value, str):
             writer.add_string(key, value)
@@ -38,10 +53,37 @@ def add_metadata(writer: gguf.GGUFWriter, metadata: dict[str, Any]) -> None:
             raise TypeError(f"unsupported metadata value for {key}: {value!r}")
 
 
+def add_tokenizer_metadata(writer: gguf.GGUFWriter, metadata: dict[str, Any]) -> None:
+    if "tokenizer.ggml.model" not in metadata:
+        return
+    writer.add_tokenizer_model(str(metadata["tokenizer.ggml.model"]))
+    if "tokenizer.ggml.tokens" in metadata:
+        writer.add_token_list(metadata["tokenizer.ggml.tokens"])
+    if "tokenizer.ggml.scores" in metadata:
+        writer.add_token_scores(metadata["tokenizer.ggml.scores"])
+    if "tokenizer.ggml.token_type" in metadata:
+        writer.add_token_types(metadata["tokenizer.ggml.token_type"])
+    if "tokenizer.ggml.bos_token_id" in metadata:
+        writer.add_bos_token_id(int(metadata["tokenizer.ggml.bos_token_id"]))
+    if "tokenizer.ggml.eos_token_id" in metadata:
+        writer.add_eos_token_id(int(metadata["tokenizer.ggml.eos_token_id"]))
+    if "tokenizer.ggml.unknown_token_id" in metadata:
+        writer.add_unk_token_id(int(metadata["tokenizer.ggml.unknown_token_id"]))
+    if "tokenizer.ggml.padding_token_id" in metadata:
+        writer.add_pad_token_id(int(metadata["tokenizer.ggml.padding_token_id"]))
+    if "tokenizer.ggml.add_bos_token" in metadata:
+        writer.add_add_bos_token(bool(metadata["tokenizer.ggml.add_bos_token"]))
+    if "tokenizer.ggml.add_eos_token" in metadata:
+        writer.add_add_eos_token(bool(metadata["tokenizer.ggml.add_eos_token"]))
+    if "tokenizer.ggml.add_space_prefix" in metadata:
+        writer.add_bool("tokenizer.ggml.add_space_prefix", bool(metadata["tokenizer.ggml.add_space_prefix"]))
+
+
 def write_gguf(path: Path, metadata: dict[str, Any], tensors: dict[str, dict[str, Any]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     writer = gguf.GGUFWriter(path, arch=str(metadata.get("general.architecture", "vlacpp")))
     add_metadata(writer, metadata)
+    add_tokenizer_metadata(writer, metadata)
     for name, tensor in tensors.items():
         shape = [int(dim) for dim in tensor["shape"]]
         data = np.asarray(tensor["data"], dtype=np.float32)
@@ -56,6 +98,7 @@ def write_gguf_arrays(path: Path, metadata: dict[str, Any], tensors: Any) -> Non
     path.parent.mkdir(parents=True, exist_ok=True)
     writer = gguf.GGUFWriter(path, arch=str(metadata.get("general.architecture", "vlacpp")), use_temp_file=True)
     add_metadata(writer, metadata)
+    add_tokenizer_metadata(writer, metadata)
     for name, shape, array in tensors:
         writer.add_tensor(name, np.asarray(array, dtype=np.float32), raw_shape=[int(dim) for dim in shape])
     writer.write_header_to_file()

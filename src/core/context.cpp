@@ -121,6 +121,7 @@ vlacpp_status vlacpp_create_context(
     context->model = model;
     context->runtime.seed = effective.seed;
     context->runtime.flow_steps = effective.flow_steps > 0 ? effective.flow_steps : 10;
+    context->runtime.rng.seed(effective.seed);
 
     *out_context = context.release();
     return VLACPP_STATUS_OK;

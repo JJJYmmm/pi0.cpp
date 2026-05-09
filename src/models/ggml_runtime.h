@@ -6,6 +6,7 @@
 #include "ggml.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -26,9 +27,26 @@ public:
     GgmlRunner & operator=(const GgmlRunner &) = delete;
 
     bool uses_backend() const;
-    ggml_init_params init_params(size_t mem_size) const;
+    ggml_init_params init_params(size_t mem_size, const void * stable_id = nullptr, uint64_t stable_variant = 0) const;
     ggml_tensor * new_weight_1d(ggml_context * ctx, const Tensor & tensor) const;
+    ggml_tensor * new_weight_1d_plus_one(ggml_context * ctx, const Tensor & tensor) const;
     ggml_tensor * new_weight_2d(ggml_context * ctx, const Tensor & tensor) const;
+    ggml_tensor * new_cached_f32_3d(
+        ggml_context * ctx,
+        const void * key,
+        uint64_t generation,
+        const float * data,
+        int64_t ne0,
+        int64_t ne1,
+        int64_t ne2) const;
+    ggml_tensor * new_cached_f32_3d_from_backend(
+        ggml_context * ctx,
+        const void * key,
+        uint64_t generation,
+        const ggml_tensor * source,
+        int64_t ne0,
+        int64_t ne1,
+        int64_t ne2) const;
 
     void set_input(
         std::vector<GgmlInput> & inputs,
@@ -49,6 +67,8 @@ private:
     ggml_backend_t gpu_backend_ = nullptr;
     ggml_backend_t cpu_backend_ = nullptr;
     ggml_backend_sched_t sched_ = nullptr;
+    mutable const void * stable_id_ = nullptr;
+    mutable uint64_t stable_variant_ = 0;
     mutable std::string profile_label_;
 };
 

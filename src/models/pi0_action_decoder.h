@@ -27,6 +27,13 @@ public:
         std::vector<float> & out) const;
 
 private:
+    bool velocity_expert_batch_cuda(
+        float time,
+        const std::vector<float> & actions,
+        const std::vector<float> & state_context,
+        const std::vector<PrefixLayerKv> & prefix_layers,
+        size_t prefix_tokens,
+        std::vector<float> & out) const;
     const Tensor * find_tensor(const std::string & name) const;
 
     const ModelConfig & config_;

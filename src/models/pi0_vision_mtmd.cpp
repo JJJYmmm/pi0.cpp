@@ -116,12 +116,11 @@ bool Pi0VisionMtmd::encode(
             return false;
         }
 
-        std::vector<float> image_copy = image.data;
         std::vector<float> encoded(element_count);
         if (!clip_encode_float_image(
                 ctx_,
                 std::max(1, n_threads),
-                image_copy.data(),
+                const_cast<float *>(image.data.data()),
                 image.height,
                 image.width,
                 encoded.data())) {

@@ -117,21 +117,128 @@ def load_json_arg(spec: str | None) -> dict[str, Any]:
     return load_json(Path(spec))
 
 
+def fit_stats_vector(values: Any, width: int, fill: float, name: str) -> list[float]:
+    result = [float(v) for v in values]
+    if len(result) > width:
+        raise SystemExit(f"norm stats {name} has width {len(result)} but metadata expects {width}")
+    result.extend([fill] * (width - len(result)))
+    return result
+
+
+def load_safetensors_norm_stats(path: Path) -> dict[str, Any]:
+    try:
+        from safetensors import safe_open
+    except ImportError as exc:
+        raise SystemExit("safetensors norm stats require the safetensors Python package") from exc
+
+    with safe_open(path, framework="np") as handle:
+        keys = set(handle.keys())
+        if "observation.state.mean" not in keys or "observation.state.std" not in keys:
+            raise SystemExit("safetensors norm stats missing observation.state mean/std tensors")
+        if "action.mean" not in keys or "action.std" not in keys:
+            raise SystemExit("safetensors norm stats missing action mean/std tensors")
+        return {
+            "state": {
+                "mean": handle.get_tensor("observation.state.mean").astype("float32").reshape(-1).tolist(),
+                "std": handle.get_tensor("observation.state.std").astype("float32").reshape(-1).tolist(),
+            },
+            "actions": {
+                "mean": handle.get_tensor("action.mean").astype("float32").reshape(-1).tolist(),
+                "std": handle.get_tensor("action.std").astype("float32").reshape(-1).tolist(),
+            },
+        }
+
+
+def load_norm_stats_arg(spec: str | None) -> dict[str, Any]:
+    if spec is None:
+        return {}
+    if spec.startswith("hf://") or spec.startswith("ms://") or spec.startswith("https://") or spec.startswith("http://"):
+        return load_json_arg(spec)
+    path = Path(spec)
+    if path.suffix.lower() == ".safetensors":
+        return load_safetensors_norm_stats(path)
+    return load_json(path)
+
+
 def apply_norm_stats(metadata: dict[str, Any], norm_stats: dict[str, Any]) -> None:
     stats = norm_stats.get("norm_stats", norm_stats)
     if "state" in stats:
         state = stats["state"]
-        metadata["state_mean"] = [float(v) for v in state["mean"]]
-        metadata["state_std"] = [float(v) for v in state["std"]]
+        metadata["state_mean"] = fit_stats_vector(state["mean"], int(metadata["state_dim"]), 0.0, "state mean")
+        metadata["state_std"] = fit_stats_vector(state["std"], int(metadata["state_dim"]), 1.0, "state std")
     if "actions" in stats:
         actions = stats["actions"]
-        metadata["action_mean"] = [float(v) for v in actions["mean"]]
-        metadata["action_std"] = [float(v) for v in actions["std"]]
+        metadata["action_mean"] = fit_stats_vector(actions["mean"], int(metadata["action_dim"]), 0.0, "action mean")
+        metadata["action_std"] = fit_stats_vector(actions["std"], int(metadata["action_dim"]), 1.0, "action std")
 
     if len(metadata["state_mean"]) != int(metadata["state_dim"]) or len(metadata["state_std"]) != int(metadata["state_dim"]):
         raise SystemExit("norm stats state mean/std must match state_dim")
     if len(metadata["action_mean"]) != int(metadata["action_dim"]) or len(metadata["action_std"]) != int(metadata["action_dim"]):
         raise SystemExit("norm stats action mean/std must match action_dim")
+
+
+def default_paligemma_tokenizer_path() -> Path | None:
+    candidates = [
+        Path.home() / ".cache" / "openpi" / "big_vision" / "paligemma_tokenizer.model",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def should_auto_embed_tokenizer(args: argparse.Namespace) -> bool:
+    if args.tokenizer_model is not None:
+        return True
+    if args.mtmd_vision_metadata:
+        return False
+    for spec in (args.config, args.checkpoint):
+        if spec is not None and not spec.startswith(("hf://", "ms://", "http://", "https://")):
+            parts = Path(spec).parts
+            if "ckpts" in parts or "checkpoints" in parts:
+                return True
+    return False
+
+
+def load_sentencepiece_tokenizer_metadata(path: Path) -> dict[str, Any]:
+    try:
+        import sentencepiece as spm
+    except ImportError as exc:
+        raise SystemExit("PaliGemma tokenizer metadata requires the sentencepiece Python package") from exc
+
+    tokenizer = spm.SentencePieceProcessor(model_file=str(path))
+    tokens: list[bytes] = []
+    scores: list[float] = []
+    token_types: list[int] = []
+    for token_id in range(tokenizer.vocab_size()):
+        tokens.append(tokenizer.id_to_piece(token_id).encode("utf-8"))
+        scores.append(float(tokenizer.get_score(token_id)))
+        token_type = 1
+        if tokenizer.is_unknown(token_id):
+            token_type = 2
+        elif tokenizer.is_control(token_id):
+            token_type = 3
+        elif tokenizer.is_unused(token_id):
+            token_type = 5
+        elif tokenizer.is_byte(token_id):
+            token_type = 6
+        token_types.append(token_type)
+    metadata: dict[str, Any] = {
+        "tokenizer.ggml.model": "llama",
+        "tokenizer.ggml.tokens": tokens,
+        "tokenizer.ggml.scores": scores,
+        "tokenizer.ggml.token_type": token_types,
+        "tokenizer.ggml.bos_token_id": int(tokenizer.bos_id()),
+        "tokenizer.ggml.eos_token_id": int(tokenizer.eos_id()),
+        "tokenizer.ggml.unknown_token_id": int(tokenizer.unk_id()),
+        "tokenizer.ggml.add_bos_token": True,
+        "tokenizer.ggml.add_eos_token": False,
+        "tokenizer.ggml.add_space_prefix": False,
+    }
+    pad_id = int(tokenizer.pad_id())
+    if pad_id >= 0:
+        metadata["tokenizer.ggml.padding_token_id"] = pad_id
+    return metadata
 
 
 def load_safetensors(path: Path) -> dict[str, Any]:
@@ -654,7 +761,7 @@ def build_tensors(
 
 def gguf_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
     result = {
-        "general.architecture": metadata["model_type"],
+        "general.architecture": "gemma" if "tokenizer.ggml.model" in metadata else metadata["model_type"],
         "vlacpp.model_type": metadata["model_type"],
         "vlacpp.image_width": metadata["image_width"],
         "vlacpp.image_height": metadata["image_height"],
@@ -688,6 +795,9 @@ def gguf_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
     for key, source in optional_ints.items():
         if source in metadata:
             result[key] = int(metadata[source])
+    for key, value in metadata.items():
+        if key.startswith("tokenizer.ggml."):
+            result[key] = value
     if "clip.projector_type" in metadata:
         result["general.architecture"] = metadata.get("general.architecture", "clip")
         for key, value in metadata.items():
@@ -696,11 +806,26 @@ def gguf_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def tokenizer_sidecar_path(output: Path) -> Path:
+    if output.suffix:
+        return output.with_suffix(".tokenizer.gguf")
+    return Path(str(output) + ".tokenizer.gguf")
+
+
+def tokenizer_only_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
+    result = {"general.architecture": "gemma"}
+    for key, value in metadata.items():
+        if key.startswith("tokenizer.ggml."):
+            result[key] = value
+    return result
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint")
     parser.add_argument("--config", help="optional JSON metadata/config file, local path, hf:// URI, or ms:// URI")
     parser.add_argument("--norm-stats", help="optional OpenPI norm_stats JSON file, local path, hf:// URI, or ms:// URI")
+    parser.add_argument("--tokenizer-model", type=Path, help="optional PaliGemma sentencepiece tokenizer.model; defaults to the OpenPI cache when present")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--output-format", choices=["auto", "json", "gguf"], default="auto")
     parser.add_argument("--mtmd-vision-metadata", action="store_true", help="write llama.cpp mtmd metadata for pi0 vision GGUFs")
@@ -725,9 +850,12 @@ def main() -> None:
     if config:
         checkpoint = {**checkpoint, "metadata": {**config, **checkpoint.get("metadata", {})}}
     metadata = build_metadata(args, checkpoint)
-    norm_stats = load_json_arg(args.norm_stats)
+    norm_stats = load_norm_stats_arg(args.norm_stats)
     if norm_stats:
         apply_norm_stats(metadata, norm_stats)
+    tokenizer_model = args.tokenizer_model or (default_paligemma_tokenizer_path() if should_auto_embed_tokenizer(args) else None)
+    if tokenizer_model is not None and metadata.get("model_type") in {"pi0", "pi05"} and not args.mtmd_vision_metadata:
+        metadata.update(load_sentencepiece_tokenizer_metadata(tokenizer_model))
     output_format = args.output_format
     if output_format == "auto":
         output_format = "json" if args.output.suffix.lower() == ".json" else "gguf"
@@ -740,10 +868,14 @@ def main() -> None:
     gguf_meta = gguf_metadata(metadata)
     if args.tensor_map_manifest is not None:
         write_gguf_arrays(args.output, gguf_meta, iter_tensor_map_manifest_arrays(args.tensor_map_manifest))
+        if "tokenizer.ggml.model" in gguf_meta:
+            write_gguf_arrays(tokenizer_sidecar_path(args.output), tokenizer_only_metadata(gguf_meta), [])
         return
 
     tensors = build_tensors(metadata, checkpoint, args.init_tiny, args.tensor_map_manifest)
     write_gguf(args.output, gguf_meta, tensors)
+    if "tokenizer.ggml.model" in gguf_meta:
+        write_gguf(tokenizer_sidecar_path(args.output), tokenizer_only_metadata(gguf_meta), {})
 
 
 if __name__ == "__main__":

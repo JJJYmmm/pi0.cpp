@@ -52,7 +52,7 @@ public:
 
     vlacpp_status infer(
         KvCache & cache,
-        const RuntimeConfig & runtime,
+        RuntimeConfig & runtime,
         const ObservationData & observation,
         std::vector<float> & out_actions) override {
         if (backend_.backend == VLACPP_BACKEND_CUDA) {
@@ -62,21 +62,24 @@ public:
         }
 
         vlm_.prefill_prefix(cache, observation);
-        const Pi0VlmSignals signals = vlm_.encode(observation);
         const Tensor * velocity_weight = find_tensor("pi0.velocity.weight");
         const Tensor * time_weight = find_tensor("pi0.velocity.time_weight");
         const bool has_action_decoder =
             action_decoder_.has_pi0_action_head() || action_decoder_.has_pi05_action_head();
         std::vector<float> state_context;
+        Pi0VlmSignals signals;
         if (has_action_decoder) {
             action_decoder_.state_context(observation.state, state_context);
+        } else {
+            signals = vlm_.encode(observation);
         }
 
         sample_flow_euler(
             runtime.flow_steps,
-            runtime.seed,
+            runtime.rng,
             config_.action_horizon,
             config_.action_dim,
+            observation.noise.empty() ? nullptr : &observation.noise,
             [&](float time, const std::vector<float> & x, std::vector<float> & v) {
                 if (has_action_decoder) {
                     std::vector<float> action_velocity;
