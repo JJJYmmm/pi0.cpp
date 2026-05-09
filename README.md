@@ -45,6 +45,8 @@ out of git under `build*/`, `ckpts/`, `artifacts/`, and `data/`.
 
 ## Build And Test
 
+CPU build:
+
 ```sh
 git submodule update --init --recursive
 cmake -S . -B build
@@ -52,9 +54,20 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-The default build links llama.cpp/ggml from `third_party/llama.cpp`. For CUDA,
-configure CMake with the matching llama.cpp CUDA options and use the resulting
-`libvlacpp.so` from the Python wrapper or your own host application.
+CUDA build:
+
+```sh
+git submodule update --init --recursive
+cmake -S . -B build-cuda \
+  -DGGML_CUDA=ON \
+  -DCMAKE_CUDA_ARCHITECTURES=80
+cmake --build build-cuda -j
+ctest --test-dir build-cuda --output-on-failure
+```
+
+Set `CMAKE_CUDA_ARCHITECTURES` for your GPU. Common values are `80` for A100,
+`86` for RTX 30xx/A10, `89` for RTX 40xx/L40, and `90` for H100. The Python
+wrapper can load the CUDA build with `library_path="build-cuda/libvlacpp.so"`.
 
 ## pi0 LIBERO GGUF Flow
 
