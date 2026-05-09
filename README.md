@@ -19,7 +19,7 @@
 > project will become actually useful. A small wish.
 
 `vla.cpp` is a C++ VLA runtime for π0-style GGUF inference, built on top of
-`llama.cpp` / `ggml`. The v1 scope currently focuses on π0-style models and
+[llama.cpp(ggml)](https://github.com/ggml-org/llama.cpp). The v1 scope currently focuses on π0-style models and
 includes GGUF conversion , a π0 CLI, and focused runtime tests.
 
 I may add more classic / representative VLA models, such as π0.5 and OpenVLA, in the future, _or maybe not_.
