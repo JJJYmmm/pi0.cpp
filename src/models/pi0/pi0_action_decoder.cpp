@@ -1,4 +1,4 @@
-#include "models/pi0_action_decoder.h"
+#include "models/pi0/pi0_action_decoder.h"
 
 #include "models/ggml_runtime.h"
 
@@ -147,12 +147,8 @@ Pi0ActionDecoder::Pi0ActionDecoder(
     const TensorMap & tensors)
     : config_(config), backend_(backend), tensors_(tensors), action_expert_(config, backend, tensors) {}
 
-bool Pi0ActionDecoder::has_pi05_action_head() const {
-    return find_tensor("vlacpp.openpi.pi05.time_mlp_in.weight") != nullptr;
-}
-
 bool Pi0ActionDecoder::has_pi0_action_head() const {
-    return find_tensor("vlacpp.openpi.action_in_proj.weight") != nullptr && !has_pi05_action_head();
+    return find_tensor("vlacpp.openpi.action_in_proj.weight") != nullptr;
 }
 
 bool Pi0ActionDecoder::has_pi0_action_expert() const {
@@ -188,27 +184,6 @@ void Pi0ActionDecoder::velocity_batch(
 
     const int batch = config_.action_horizon;
     const size_t width = static_cast<size_t>(in_w.shape[1]);
-
-    if (has_pi05_action_head()) {
-        std::vector<float> action_tokens;
-        run_mul_mat_add_batch(in_w, in_b, actions, batch, action_tokens, backend_);
-        const Tensor & time_in_w = *find_tensor("vlacpp.openpi.pi05.time_mlp_in.weight");
-        const Tensor & time_in_b = *find_tensor("vlacpp.openpi.pi05.time_mlp_in.bias");
-        const Tensor & time_out_w = *find_tensor("vlacpp.openpi.pi05.time_mlp_out.weight");
-        const Tensor & time_out_b = *find_tensor("vlacpp.openpi.pi05.time_mlp_out.bias");
-        std::vector<float> hidden;
-        run_mul_mat_add_batch(time_in_w, time_in_b, posemb_sincos(time, width), 1, hidden, backend_, true);
-        std::vector<float> time_context;
-        run_mul_mat_add_batch(time_out_w, time_out_b, hidden, 1, time_context, backend_, true);
-        for (int row = 0; row < batch; ++row) {
-            const size_t offset = static_cast<size_t>(row) * width;
-            for (size_t i = 0; i < width; ++i) {
-                action_tokens[offset + i] += time_context[i];
-            }
-        }
-        run_mul_mat_add_batch(out_w, out_b, action_tokens, batch, out, backend_);
-        return;
-    }
 
     if (has_pi0_action_expert()) {
         if (velocity_expert_batch_cuda(time, actions, state_context, prefix_layers, prefix_tokens, out)) {

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -23,22 +24,6 @@ ACTION_EXPERT_MAP = {
     "action_time_mlp_in.bias": "vlacpp.openpi.action_time_mlp_in.bias",
     "action_time_mlp_out.weight": "vlacpp.openpi.action_time_mlp_out.weight",
     "action_time_mlp_out.bias": "vlacpp.openpi.action_time_mlp_out.bias",
-}
-
-TINY_VELOCITY_MAP = {
-    "pi0.velocity.weight": "pi0.velocity.weight",
-    "pi0.velocity.time_weight": "pi0.velocity.time_weight",
-}
-
-PI05_ACTION_EXPERT_MAP = {
-    "action_in_proj.weight": "vlacpp.openpi.action_in_proj.weight",
-    "action_in_proj.bias": "vlacpp.openpi.action_in_proj.bias",
-    "time_mlp_in.weight": "vlacpp.openpi.pi05.time_mlp_in.weight",
-    "time_mlp_in.bias": "vlacpp.openpi.pi05.time_mlp_in.bias",
-    "time_mlp_out.weight": "vlacpp.openpi.pi05.time_mlp_out.weight",
-    "time_mlp_out.bias": "vlacpp.openpi.pi05.time_mlp_out.bias",
-    "action_out_proj.weight": "vlacpp.openpi.action_out_proj.weight",
-    "action_out_proj.bias": "vlacpp.openpi.action_out_proj.bias",
 }
 
 VISION_PROJECTOR_MAP = {
@@ -283,6 +268,15 @@ def build_manifest(
     return manifest
 
 
+def manifest_source_ref(source: str, output: Path | None) -> str:
+    if source.startswith(("hf://", "ms://", "https://", "http://")):
+        return source
+    path = Path(source)
+    if not path.exists() or output is None:
+        return source
+    return os.path.relpath(path.resolve(), output.parent.resolve())
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("source", help="local path, https URL, hf://owner/repo/path, or ms://owner/repo/path")
@@ -290,11 +284,8 @@ def main() -> None:
         "--family",
         choices=[
             "action-expert",
-            "pi05-action-expert",
-            "tiny-velocity",
             "all",
             "pi0-full",
-            "pi05-full",
             "pi0-vision-mtmd",
             "pi0-vision-projector",
             "pi0-action-projector",
@@ -309,23 +300,18 @@ def main() -> None:
     header = inspect_header(args.source)
     if args.family == "action-expert":
         mapping = resolve_runtime_aliases(header, ACTION_EXPERT_MAP)
-    elif args.family == "pi05-action-expert":
-        mapping = resolve_runtime_aliases(header, PI05_ACTION_EXPERT_MAP)
     elif args.family == "all":
         mapping = all_tensor_map(header)
     elif args.family == "pi0-full":
         mapping = full_tensor_map(header, PI0_RUNTIME_ALIAS_MAP)
-    elif args.family == "pi05-full":
-        mapping = full_tensor_map(header, PI05_ACTION_EXPERT_MAP)
     elif args.family == "pi0-vision-mtmd":
         mapping = pi0_vision_mtmd_tensor_map(header)
     elif args.family == "pi0-vision-projector":
         mapping = resolve_runtime_aliases(header, VISION_PROJECTOR_MAP)
     elif args.family == "pi0-action-projector":
         mapping = resolve_runtime_aliases(header, PI0_ACTION_PROJECTOR_MAP)
-    else:
-        mapping = TINY_VELOCITY_MAP
-    manifest = build_manifest(args.source, header, mapping, args.family, args.include_inventory)
+    source_ref = manifest_source_ref(args.source, args.output)
+    manifest = build_manifest(source_ref, header, mapping, args.family, args.include_inventory)
     if args.require_complete and manifest["missing"]:
         raise SystemExit("missing mapped tensor(s): " + ", ".join(manifest["missing"]))
 

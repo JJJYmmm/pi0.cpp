@@ -1,4 +1,4 @@
-#include "models/pi0_action_expert.h"
+#include "models/pi0/pi0_action_expert.h"
 
 #include "models/ggml_runtime.h"
 

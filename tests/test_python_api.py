@@ -22,11 +22,11 @@ def main() -> None:
 
     with vlacpp.Pi0Policy(args.model, library_path=args.library, seed=1, flow_steps=2) as policy:
         actions = policy.infer(
-            state=np.asarray([1.0, 2.0, 3.0], dtype=np.float32),
+            state=np.asarray([1.0, -2.0], dtype=np.float32),
             images={"base_0_rgb": np.full((224, 224, 3), 127, dtype=np.uint8)},
             prompt="pick up the fork",
         )
-        if actions.shape != (4, 2):
+        if actions.shape != (3, 2):
             raise SystemExit(f"unexpected action shape {actions.shape}")
         if not np.all(np.isfinite(actions)):
             raise SystemExit("actions contain non-finite values")

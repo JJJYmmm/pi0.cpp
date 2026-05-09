@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create a tiny OpenPI-named action-head safetensors fixture."""
+"""Create an OpenPI-named action-head safetensors fixture."""
 
 from __future__ import annotations
 

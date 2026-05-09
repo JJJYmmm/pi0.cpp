@@ -1,7 +1,7 @@
-#include "models/pi0_action_expert.h"
-#include "models/pi0_action_decoder.h"
-#include "models/pi0_language_prefix.h"
-#include "models/pi0_vlm.h"
+#include "models/pi0/pi0_action_expert.h"
+#include "models/pi0/pi0_action_decoder.h"
+#include "models/pi0/pi0_language_prefix.h"
+#include "models/pi0/pi0_vlm.h"
 
 #include <algorithm>
 #include <cmath>

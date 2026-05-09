@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Inspect the small GGUF subset emitted by vlacpp conversion tools."""
+"""Inspect GGUF metadata and tensor directory entries."""
 
 from __future__ import annotations
 
@@ -18,57 +18,54 @@ GGUF_TYPE_STRING = 8
 GGUF_TYPE_ARRAY = 9
 
 
-def read_string(data: bytes, offset: int) -> tuple[str, int]:
-    size = struct.unpack_from("<Q", data, offset)[0]
-    offset += 8
-    text = data[offset : offset + size].decode("utf-8")
-    return text, offset + size
+def read_exact(file: Any, size: int) -> bytes:
+    data = file.read(size)
+    if len(data) != size:
+        raise SystemExit("truncated GGUF file")
+    return data
 
 
-def read_value(data: bytes, offset: int, value_type: int) -> tuple[Any, int]:
-    if value_type in {GGUF_TYPE_UINT32, GGUF_TYPE_INT32, GGUF_TYPE_FLOAT32}:
-        if value_type == GGUF_TYPE_FLOAT32:
-            return struct.unpack_from("<f", data, offset)[0], offset + 4
-        return struct.unpack_from("<i", data, offset)[0], offset + 4
+def read_file_string(file: Any) -> str:
+    size = struct.unpack("<Q", read_exact(file, 8))[0]
+    return read_exact(file, size).decode("utf-8")
+
+
+def read_file_value(file: Any, value_type: int) -> Any:
+    if value_type == GGUF_TYPE_UINT32:
+        return struct.unpack("<I", read_exact(file, 4))[0]
+    if value_type == GGUF_TYPE_INT32:
+        return struct.unpack("<i", read_exact(file, 4))[0]
+    if value_type == GGUF_TYPE_FLOAT32:
+        return struct.unpack("<f", read_exact(file, 4))[0]
     if value_type == GGUF_TYPE_BOOL:
-        return bool(struct.unpack_from("<?", data, offset)[0]), offset + 1
+        return bool(struct.unpack("<?", read_exact(file, 1))[0])
     if value_type == GGUF_TYPE_STRING:
-        return read_string(data, offset)
+        return read_file_string(file)
     if value_type == GGUF_TYPE_ARRAY:
-        elem_type, count = struct.unpack_from("<IQ", data, offset)
-        offset += 12
-        values = []
-        for _ in range(count):
-            value, offset = read_value(data, offset, elem_type)
-            values.append(value)
-        return values, offset
+        elem_type, count = struct.unpack("<IQ", read_exact(file, 12))
+        return [read_file_value(file, elem_type) for _ in range(count)]
     raise SystemExit(f"unsupported GGUF metadata type: {value_type}")
 
 
 def inspect(path: Path) -> dict[str, Any]:
-    data = path.read_bytes()
-    if data[:4] != b"GGUF":
-        raise SystemExit("not a GGUF file")
-    version, tensor_count, metadata_count = struct.unpack_from("<IQQ", data, 4)
-    offset = 24
-    metadata = {}
-    for _ in range(metadata_count):
-        key, offset = read_string(data, offset)
-        value_type = struct.unpack_from("<I", data, offset)[0]
-        offset += 4
-        value, offset = read_value(data, offset, value_type)
-        metadata[key] = value
+    with path.open("rb") as file:
+        if read_exact(file, 4) != b"GGUF":
+            raise SystemExit("not a GGUF file")
+        version, tensor_count, metadata_count = struct.unpack("<IQQ", read_exact(file, 20))
+        metadata = {}
+        for _ in range(metadata_count):
+            key = read_file_string(file)
+            value_type = struct.unpack("<I", read_exact(file, 4))[0]
+            metadata[key] = read_file_value(file, value_type)
 
-    tensors = []
-    for _ in range(tensor_count):
-        name, offset = read_string(data, offset)
-        n_dims = struct.unpack_from("<I", data, offset)[0]
-        offset += 4
-        shape = list(struct.unpack_from("<" + "Q" * n_dims, data, offset))
-        offset += 8 * n_dims
-        tensor_type, data_offset = struct.unpack_from("<IQ", data, offset)
-        offset += 12
-        tensors.append({"name": name, "shape": shape, "type": tensor_type, "data_offset": data_offset})
+        tensors = []
+        for _ in range(tensor_count):
+            name = read_file_string(file)
+            n_dims = struct.unpack("<I", read_exact(file, 4))[0]
+            shape = list(struct.unpack("<" + "Q" * n_dims, read_exact(file, 8 * n_dims)))
+            tensor_type, data_offset = struct.unpack("<IQ", read_exact(file, 12))
+            tensors.append({"name": name, "shape": shape, "type": tensor_type, "data_offset": data_offset})
+
     return {
         "version": version,
         "tensor_count": tensor_count,

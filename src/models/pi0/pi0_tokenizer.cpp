@@ -1,4 +1,4 @@
-#include "models/pi0_tokenizer.h"
+#include "models/pi0/pi0_tokenizer.h"
 
 #include "llama.h"
 

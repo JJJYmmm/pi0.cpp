@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Convert a tiny OpenPI-style checkpoint into vlacpp GGUF.
+"""Convert OpenPI-style checkpoints and tensor-map manifests into vlacpp GGUF.
 
 The production pi0 tensor map is still intentionally narrow, but this writes a
-real GGUF v3 container with metadata and F32 tensors consumed by the C++ pi0
-runtime. A JSON output path preserves the original metadata-only smoke flow.
+real GGUF v3 container with metadata and F32 tensors consumed by the C++ runtime.
 """
 
 from __future__ import annotations
@@ -21,7 +20,6 @@ from urllib.request import Request, urlopen
 from gguf_writer import write_gguf, write_gguf_arrays
 
 
-REQUIRED_TENSORS = {"pi0.velocity.weight", "pi0.velocity.time_weight"}
 ACTION_HEAD_TENSORS = {
     "vlacpp.openpi.action_in_proj.weight",
     "vlacpp.openpi.action_in_proj.bias",
@@ -32,38 +30,6 @@ ACTION_HEAD_TENSORS = {
     "vlacpp.openpi.action_out_proj.weight",
     "vlacpp.openpi.action_out_proj.bias",
 }
-PI05_ACTION_HEAD_TENSORS = {
-    "vlacpp.openpi.action_in_proj.weight",
-    "vlacpp.openpi.action_in_proj.bias",
-    "vlacpp.openpi.pi05.time_mlp_in.weight",
-    "vlacpp.openpi.pi05.time_mlp_in.bias",
-    "vlacpp.openpi.pi05.time_mlp_out.weight",
-    "vlacpp.openpi.pi05.time_mlp_out.bias",
-    "vlacpp.openpi.action_out_proj.weight",
-    "vlacpp.openpi.action_out_proj.bias",
-}
-
-
-def default_tiny_weights(action_dim: int, state_dim: int) -> dict[str, dict[str, Any]]:
-    feature_dim = state_dim + 3
-    weights: list[float] = []
-    for col in range(action_dim):
-        phase = (col + 1) / max(1, action_dim)
-        row = [0.01 * phase]
-        row.extend(0.50 / max(1, state_dim) for _ in range(state_dim))
-        row.extend([0.25, 0.25])
-        weights.extend(row)
-    return {
-        "pi0.velocity.weight": {
-            "shape": [action_dim, feature_dim],
-            "data": weights,
-        },
-        "pi0.velocity.time_weight": {
-            "shape": [action_dim],
-            "data": [0.001] * action_dim,
-        },
-    }
-
 
 def resolve_checkpoint(checkpoint: str | None) -> Path | None:
     if checkpoint is None:
@@ -253,7 +219,7 @@ def load_safetensors(path: Path) -> dict[str, Any]:
         raw_metadata = handle.metadata() or {}
         if "vlacpp.metadata" in raw_metadata:
             metadata = json.loads(raw_metadata["vlacpp.metadata"])
-        allowed = REQUIRED_TENSORS | ACTION_HEAD_TENSORS | PI05_ACTION_HEAD_TENSORS
+        allowed = ACTION_HEAD_TENSORS | PI05_ACTION_HEAD_TENSORS
         for name in handle.keys():
             if name not in allowed:
                 continue
@@ -361,7 +327,14 @@ def load_remote_safetensors(spec: str) -> dict[str, Any]:
     header = json.loads(read_remote_range(url, 8, 8 + header_len - 1).decode("utf-8"))
     raw_metadata = header.get("__metadata__", {})
     metadata = json.loads(raw_metadata.get("vlacpp.metadata", "{}"))
-    missing = sorted(REQUIRED_TENSORS - set(header))
+    names = set(header)
+    if ACTION_HEAD_TENSORS.issubset(names):
+        required = ACTION_HEAD_TENSORS
+    elif PI05_ACTION_HEAD_TENSORS.issubset(names):
+        required = PI05_ACTION_HEAD_TENSORS
+    else:
+        required = ACTION_HEAD_TENSORS
+    missing = sorted(required - names)
     if missing:
         available = sorted(name for name in header if name != "__metadata__")
         preview = ", ".join(available[:20])
@@ -372,7 +345,7 @@ def load_remote_safetensors(spec: str) -> dict[str, Any]:
 
     tensors: dict[str, dict[str, Any]] = {}
     data_begin = 8 + header_len
-    for name in sorted(REQUIRED_TENSORS):
+    for name in sorted(required):
         meta = header[name]
         if meta["dtype"] != "F32":
             raise SystemExit(f"remote tensor {name} has unsupported dtype {meta['dtype']}; expected F32")
@@ -486,12 +459,6 @@ def load_checkpoint_arg(checkpoint: str | None) -> dict[str, Any]:
 
 def infer_metadata_from_tensors(tensors: dict[str, dict[str, Any]]) -> dict[str, Any]:
     inferred: dict[str, Any] = {}
-    if "pi0.velocity.weight" in tensors:
-        shape = tensors["pi0.velocity.weight"]["shape"]
-        if len(shape) == 2:
-            inferred["action_dim"] = int(shape[0])
-            if int(shape[1]) != 4:
-                inferred["state_dim"] = int(shape[1]) - 3
     action_in = tensors.get("vlacpp.openpi.action_in_proj.weight")
     if action_in is not None and len(action_in["shape"]) == 2:
         inferred["action_dim"] = int(action_in["shape"][1])
@@ -643,10 +610,7 @@ def build_metadata(args: argparse.Namespace, checkpoint: dict[str, Any]) -> dict
     source = {**checkpoint, **inferred, **metadata}
     state_dim = int(source.get("state_dim", args.state_dim))
     action_dim = int(source.get("action_dim", args.action_dim))
-    default_model_type = "pi0" if "openpi_action_width" in inferred else "mock-pi0"
-    model_type = source.get("model_type", args.model_type)
-    if model_type is None:
-        model_type = default_model_type
+    model_type = source.get("model_type", args.model_type or "pi0")
     default_action_horizon = 50 if "openpi_action_expert_layers" in inferred else 32
     action_horizon = source.get("action_horizon", args.action_horizon)
     if action_horizon is None:
@@ -678,20 +642,14 @@ def build_metadata(args: argparse.Namespace, checkpoint: dict[str, Any]) -> dict
 def build_tensors(
     metadata: dict[str, Any],
     checkpoint: dict[str, Any],
-    init_tiny: bool,
     tensor_map_manifest: Path | None,
 ) -> dict[str, dict[str, Any]]:
     if tensor_map_manifest is not None:
         return checkpoint.get("tensors", {})
 
     tensors = checkpoint.get("tensors")
-    if not tensors and init_tiny:
-        tensors = default_tiny_weights(int(metadata["action_dim"]), int(metadata["state_dim"]))
     if not tensors:
-        raise SystemExit(
-            "checkpoint does not contain tensors; pass --init-tiny to create a tiny scaffold "
-            "from metadata/config only"
-        )
+        raise SystemExit("checkpoint does not contain tensors")
     normalized: dict[str, dict[str, Any]] = {}
     for name, tensor in tensors.items():
         shape = [int(v) for v in tensor["shape"]]
@@ -702,26 +660,14 @@ def build_tensors(
         if n != len(data):
             raise SystemExit(f"tensor {name} shape {shape} expects {n} values, got {len(data)}")
         normalized[name] = {"shape": shape, "data": data}
-    has_velocity = REQUIRED_TENSORS.issubset(normalized)
     has_action_head = ACTION_HEAD_TENSORS.issubset(normalized)
-    has_pi05_action_head = PI05_ACTION_HEAD_TENSORS.issubset(normalized)
-    if not has_velocity and not has_action_head and not has_pi05_action_head:
-        missing_velocity = sorted(REQUIRED_TENSORS - set(normalized))
+    if not has_action_head:
         missing_action_head = sorted(ACTION_HEAD_TENSORS - set(normalized))
-        missing_pi05_action_head = sorted(PI05_ACTION_HEAD_TENSORS - set(normalized))
         raise SystemExit(
-            "checkpoint must contain tiny velocity tensors or mapped action-head tensors; "
-            f"missing velocity: {', '.join(missing_velocity)}; "
-            f"missing action-head: {', '.join(missing_action_head)}; "
-            f"missing pi05-action-head: {', '.join(missing_pi05_action_head)}"
+            "checkpoint must contain mapped action-head tensors; "
+            f"missing action-head: {', '.join(missing_action_head)}"
         )
     action_dim = int(metadata["action_dim"])
-    if has_velocity:
-        feature_dim = int(metadata["state_dim"]) + 3
-        if normalized["pi0.velocity.weight"]["shape"] not in ([action_dim, 4], [action_dim, feature_dim]):
-            raise SystemExit("pi0.velocity.weight shape must be [action_dim, 4] or [action_dim, state_dim + 3]")
-        if normalized["pi0.velocity.time_weight"]["shape"] != [action_dim]:
-            raise SystemExit("pi0.velocity.time_weight shape must be [action_dim]")
     if has_action_head:
         in_weight = normalized["vlacpp.openpi.action_in_proj.weight"]["shape"]
         if len(in_weight) != 2 or in_weight[1] != action_dim:
@@ -733,23 +679,6 @@ def build_tensors(
             "vlacpp.openpi.action_time_mlp_in.bias": [width],
             "vlacpp.openpi.action_time_mlp_out.weight": [width, width],
             "vlacpp.openpi.action_time_mlp_out.bias": [width],
-            "vlacpp.openpi.action_out_proj.weight": [action_dim, width],
-            "vlacpp.openpi.action_out_proj.bias": [action_dim],
-        }
-        for name, shape in expected.items():
-            if normalized[name]["shape"] != shape:
-                raise SystemExit(f"{name} shape must be {shape}")
-    if has_pi05_action_head:
-        in_weight = normalized["vlacpp.openpi.action_in_proj.weight"]["shape"]
-        if len(in_weight) != 2 or in_weight[1] != action_dim:
-            raise SystemExit("action_in_proj.weight shape must be [width, action_dim]")
-        width = in_weight[0]
-        expected = {
-            "vlacpp.openpi.action_in_proj.bias": [width],
-            "vlacpp.openpi.pi05.time_mlp_in.weight": [width, width],
-            "vlacpp.openpi.pi05.time_mlp_in.bias": [width],
-            "vlacpp.openpi.pi05.time_mlp_out.weight": [width, width],
-            "vlacpp.openpi.pi05.time_mlp_out.bias": [width],
             "vlacpp.openpi.action_out_proj.weight": [action_dim, width],
             "vlacpp.openpi.action_out_proj.bias": [action_dim],
         }
@@ -829,9 +758,8 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--output-format", choices=["auto", "json", "gguf"], default="auto")
     parser.add_argument("--mtmd-vision-metadata", action="store_true", help="write llama.cpp mtmd metadata for pi0 vision GGUFs")
-    parser.add_argument("--init-tiny", action="store_true", help="create tiny reference tensors when checkpoint has metadata only")
     parser.add_argument("--tensor-map-manifest", type=Path, help="convert tensors listed in a map-openpi-tensors manifest")
-    parser.add_argument("--model-type", choices=["mock-pi0", "pi0", "pi05"])
+    parser.add_argument("--model-type", choices=["pi0"])
     parser.add_argument("--image-width", type=int, default=224)
     parser.add_argument("--image-height", type=int, default=224)
     parser.add_argument("--state-dim", type=int, default=32)
@@ -853,12 +781,17 @@ def main() -> None:
     norm_stats = load_norm_stats_arg(args.norm_stats)
     if norm_stats:
         apply_norm_stats(metadata, norm_stats)
-    tokenizer_model = args.tokenizer_model or (default_paligemma_tokenizer_path() if should_auto_embed_tokenizer(args) else None)
-    if tokenizer_model is not None and metadata.get("model_type") in {"pi0", "pi05"} and not args.mtmd_vision_metadata:
-        metadata.update(load_sentencepiece_tokenizer_metadata(tokenizer_model))
     output_format = args.output_format
     if output_format == "auto":
         output_format = "json" if args.output.suffix.lower() == ".json" else "gguf"
+    tokenizer_model = args.tokenizer_model or (default_paligemma_tokenizer_path() if should_auto_embed_tokenizer(args) else None)
+    if (
+        output_format != "json" and
+        tokenizer_model is not None and
+        metadata.get("model_type") == "pi0" and
+        not args.mtmd_vision_metadata
+    ):
+        metadata.update(load_sentencepiece_tokenizer_metadata(tokenizer_model))
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     if output_format == "json":
@@ -872,7 +805,7 @@ def main() -> None:
             write_gguf_arrays(tokenizer_sidecar_path(args.output), tokenizer_only_metadata(gguf_meta), [])
         return
 
-    tensors = build_tensors(metadata, checkpoint, args.init_tiny, args.tensor_map_manifest)
+    tensors = build_tensors(metadata, checkpoint, args.tensor_map_manifest)
     write_gguf(args.output, gguf_meta, tensors)
     if "tokenizer.ggml.model" in gguf_meta:
         write_gguf(tokenizer_sidecar_path(args.output), tokenizer_only_metadata(gguf_meta), {})

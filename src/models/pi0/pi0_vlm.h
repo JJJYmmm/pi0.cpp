@@ -1,8 +1,8 @@
 #pragma once
 
-#include "models/pi0_language_prefix.h"
-#include "models/pi0_tokenizer.h"
-#include "models/pi0_vision_mtmd.h"
+#include "models/pi0/pi0_language_prefix.h"
+#include "models/pi0/pi0_tokenizer.h"
+#include "models/pi0/pi0_vision_mtmd.h"
 #include "models/model.h"
 
 namespace vlacpp {

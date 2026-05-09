@@ -1,4 +1,4 @@
-#include "models/pi0_vision_mtmd.h"
+#include "models/pi0/pi0_vision_mtmd.h"
 
 #include "clip.h"
 

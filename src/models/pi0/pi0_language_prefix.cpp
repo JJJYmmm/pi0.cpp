@@ -1,4 +1,4 @@
-#include "models/pi0_language_prefix.h"
+#include "models/pi0/pi0_language_prefix.h"
 
 #include "models/ggml_runtime.h"
 

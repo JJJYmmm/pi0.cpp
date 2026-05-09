@@ -1,6 +1,6 @@
 #pragma once
 
-#include "models/pi0_action_expert.h"
+#include "models/pi0/pi0_action_expert.h"
 #include "models/model.h"
 
 namespace vlacpp {
@@ -10,7 +10,6 @@ public:
     Pi0ActionDecoder(const ModelConfig & config, const BackendConfig & backend, const TensorMap & tensors);
 
     bool has_pi0_action_head() const;
-    bool has_pi05_action_head() const;
     bool has_pi0_action_expert() const;
     void state_context(const std::vector<float> & state, std::vector<float> & out) const;
     void suffix_embeddings(
