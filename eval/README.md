@@ -83,3 +83,42 @@ Suggested output fields are:
 
 Keep large rollout logs and simulator videos outside this repository, for
 example under `artifacts/eval/`.
+
+## vlacpp Runner
+
+`eval-libero-sim-vlacpp-lerobot-env.py` runs LIBERO episodes through the
+LeRobot environment and preprocessing stack, then calls `vlacpp.Pi0Policy` for
+action chunk inference.
+
+Example:
+
+```sh
+python3 eval/eval-libero-sim-vlacpp-lerobot-env.py \
+  --policy-path "$MODEL_DIR" \
+  --vlacpp-model artifacts/pi0-libero.gguf \
+  --vlacpp-library build-cuda/libvlacpp.so \
+  --backend cuda \
+  --task-suite-name libero_object \
+  --num-trials-per-task 5 \
+  --output artifacts/eval/vlacpp-libero-object.json
+```
+
+## Timing Semantics
+
+The benchmark records several timing fields:
+
+- `chunk_infer_time_s`: time spent inside `policy.infer(...)` when a new action
+  chunk is generated.
+- `chunk_infer_time_excluding_prefix_s`: same metric after dropping the first
+  chunk call. This is the action chunk inference time used for the report.
+- `chunk_policy_e2e_time_s`: preprocessing, tensor/image/prompt preparation,
+  optional noise generation, and `policy.infer(...)` for chunk-generation
+  steps. It does not include simulator `env.step(...)`.
+- `step_policy_e2e_time_s`: per-control-step policy-side latency, including
+  preprocessing and action postprocessing. Most steps reuse the cached action
+  plan and do not call `policy.infer(...)`.
+
+`--discard-policy-timing-prefix` defaults to `1` to remove the first chunk from
+summary timing. The first chunk includes warmup effects such as tokenizer/model
+initialization, CUDA setup, or graph/cache setup, so it is not representative of
+steady-state chunk latency.
