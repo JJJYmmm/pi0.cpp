@@ -103,22 +103,67 @@ python3 eval/eval-libero-sim-vlacpp-lerobot-env.py \
   --output artifacts/eval/vlacpp-libero-object.json
 ```
 
+## LeRobot Runner
+
+`eval-libero-sim-lerobot.py` runs the same LIBERO environment with the native
+LeRobot policy. It times `policy.select_action(...)` and records chunk-generation
+steps according to `n_action_steps`.
+
+Examples:
+
+```sh
+python3 eval/eval-libero-sim-lerobot.py \
+  --policy-path "$MODEL_DIR" \
+  --device cuda \
+  --compile-model false \
+  --task-suite-name libero_object \
+  --num-trials-per-task 5 \
+  --output artifacts/eval/lerobot-libero-object-uncompiled.json
+
+python3 eval/eval-libero-sim-lerobot.py \
+  --policy-path "$MODEL_DIR" \
+  --device cuda \
+  --compile-model true \
+  --task-suite-name libero_object \
+  --num-trials-per-task 5 \
+  --output artifacts/eval/lerobot-libero-object-compiled.json
+```
+
 ## Timing Semantics
 
 The benchmark records several timing fields:
 
-- `chunk_infer_time_s`: time spent inside `policy.infer(...)` when a new action
-  chunk is generated.
-- `chunk_infer_time_excluding_prefix_s`: same metric after dropping the first
-  chunk call. This is the action chunk inference time used for the report.
+- `chunk_infer_time_s`: vlacpp-only time spent inside `policy.infer(...)` when
+  a new action chunk is generated.
+- `chunk_infer_time_excluding_prefix_s`: same vlacpp-only metric after dropping
+  the first chunk call.
 - `chunk_policy_e2e_time_s`: preprocessing, tensor/image/prompt preparation,
-  optional noise generation, and `policy.infer(...)` for chunk-generation
-  steps. It does not include simulator `env.step(...)`.
+  optional noise generation, and chunk-generation inference. For LeRobot this
+  is the timed `policy.select_action(...)` call on chunk-generation steps. It
+  does not include simulator `env.step(...)`.
 - `step_policy_e2e_time_s`: per-control-step policy-side latency, including
   preprocessing and action postprocessing. Most steps reuse the cached action
-  plan and do not call `policy.infer(...)`.
+  plan and do not generate a new chunk.
 
 `--discard-policy-timing-prefix` defaults to `1` to remove the first chunk from
 summary timing. The first chunk includes warmup effects such as tokenizer/model
 initialization, CUDA setup, or graph/cache setup, so it is not representative of
 steady-state chunk latency.
+
+Use `summarize-libero-timing.py` to compare saved JSON files:
+
+```sh
+python3 eval/summarize-libero-timing.py \
+  artifacts/eval/vlacpp-libero-object.json \
+  artifacts/eval/lerobot-libero-object.json
+```
+
+The report table uses the steady-state chunk metric available for each runner:
+`chunk_infer_time_excluding_prefix_s.mean` for vlacpp when available, and
+`chunk_policy_e2e_time_excluding_prefix_s.mean` for LeRobot.
+
+Older saved LeRobot JSON files only contain `chunk_policy_e2e_time_*` and
+`step_policy_e2e_time_*`; they do not split preprocessing, postprocessing, or
+model-forward time. Newer vlacpp JSON files also include `preprocess_time_s`,
+`chunk_prepare_time_s`, `chunk_noise_time_s`, `chunk_infer_time_s`, and
+`postprocess_time_s`.
