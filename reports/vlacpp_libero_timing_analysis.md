@@ -39,6 +39,33 @@ The CUDA overhead around inference is small: chunk policy e2e is about
 4-5 ms higher than chunk infer. On CPU, chunk e2e is almost entirely model
 inference.
 
+## Component-Level Timing
+
+The saved JSON files do not contain direct VLM, ViT, or action expert timers.
+The most detailed reliable fields from the LIBERO runner are the stage fields
+above: preprocess, prepare, noise, chunk infer, and postprocess. In these files,
+`chunk_infer` is the whole model-side action chunk generation call, so it should
+not be reported as separate ViT/VLM/action-expert time.
+
+There are older single-task profiling and ablation records that are useful as
+engineering references, but they are not additive component timings:
+
+| Artifact | Scope | Steady-state timing |
+| --- | --- | ---: |
+| `/tmp/vlacpp-profile-cuda-mtmd-object-task0-n1-deviceprefix.json` | full policy profile, device prefix | policy 0.172 s |
+| `/tmp/vlacpp-profile-cuda-mtmd-object-task0-n1-deviceprefix-nographs.json` | full policy profile, no CUDA graphs | policy 0.187 s |
+| `/tmp/vlacpp-profile-cuda-mtmd-object-task0-n1-prefixcache.json` | full policy profile, prefix cache variant | policy 0.185 s |
+| `/tmp/vlacpp-profile-cuda-mtmd-object-task0-n1.json` | older full policy profile | policy 0.230 s |
+| `/tmp/vlacpp-task1-n1-baseonly-cuda.json` | single-task base image-set run | chunk infer 0.116 s |
+| `/tmp/vlacpp-profile-task1-skip-prefix-output.json` | single-task skip-prefix-output run | chunk infer 0.126 s |
+| `/tmp/vlacpp-task1-n1-cublas16-cuda.json` | single-task cuBLAS16 run | chunk infer 0.125 s |
+| `/tmp/vlacpp-task1-n1-mtmd-no-extra-copy-cuda.json` | single-task MTMD copy-path run | chunk infer 0.148 s |
+
+These numbers should not be interpreted as "ViT = X ms, VLM = Y ms, action
+expert = Z ms." Real component timing would need explicit timers around vision
+encoding, language/prefix prefill, the action denoising loop, and final action
+projection in the runtime.
+
 ## Timing Fields
 
 - `chunk_infer_time_excluding_prefix_s`: vla.cpp-only `policy.infer(...)` time
