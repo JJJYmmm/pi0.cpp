@@ -1,4 +1,4 @@
-# vla.cpp
+# pi0.cpp
 
 > [!CAUTION]
 > This may not be the best timing to build a C++ runtime for VLA/WMA models.
@@ -8,17 +8,17 @@
 >
 > More importantly, from an edge-device perspective, this project is honestly
 > pretty **_useless_** for now. On GPU devices like Jetson Thor, the speedup over
-> `torch.compile` is not very obvious. On CPU, `vla.cpp` can be around 3x faster,
+> `torch.compile` is not very obvious. On CPU, `pi0.cpp` can be around 3x faster,
 > but it is still far from real-time. Also, common deployment tricks like
 > aggressive quantization are not always acceptable here, since they may hurt
 > action quality.
 >
-> So yeah, I am mostly writing `vla.cpp` for learning, for fun, and maybe for
+> So yeah, I am mostly writing `p0.cpp` for learning, for fun, and maybe for
 > some kind of future vision. Hopefully one day the VLA/WMA era will hit its
 > “ChatGPT moment”, CPUs / edge accelerators will become much stronger, and this
 > project will become actually useful. A small wish.
 
-`vla.cpp` is a C++ VLA runtime for π0-style GGUF inference, built on top of
+`pi0.cpp` is a C++ VLA runtime for π0-style GGUF inference, built on top of
 [llama.cpp(ggml)](https://github.com/ggml-org/llama.cpp). The v1 scope currently focuses on π0-style models and
 includes GGUF conversion , a π0 CLI, and focused runtime tests.
 
@@ -27,6 +27,10 @@ I may add more classic / representative VLA models, such as π0.5 and OpenVLA, i
 <p align="center">
   <img src="reports/vlacpp_v1_benchmark.svg" width="650">
 </p>
+
+## News
+
+- **2026.5.12** Rename to pi0.cpp since it only supports π0-style models.
 
 ## Layout
 
