@@ -1,5 +1,12 @@
 # pi0.cpp
 
+> [!IMPORTANT]
+> 🚀 We’ve released a new version: [robot.cpp](https://github.com/Robot-cpp/robot.cpp)!
+>
+> Deploy your policy on CPU and control real devices like SO-101 with a tiny 1.6 MB binary. 🤖⚡
+>
+> This repo will be archived soon. Thank you!
+
 > [!CAUTION]
 > This may not be the best timing to build a C++ runtime for VLA/WMA models.
 > The embodied AI space is moving extremely fast, with new models showing up
